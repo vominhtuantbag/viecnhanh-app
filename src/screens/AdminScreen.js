@@ -1,0 +1,386 @@
+import { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import AdminCrudPanel from '@/components/AdminCrudPanel';
+import AdminSidebar from '@/components/AdminSidebar';
+import AdminWorkBoard from '@/components/AdminWorkBoard';
+import { Colors } from '@/constants/colors';
+import { useAuth } from '@/context/AuthContext';
+import { findAdminPage, mergeLiveAdminData, seedAdminStores } from '@/data/adminMenu';
+import {
+  fetchAdminBids,
+  fetchAdminChats,
+  fetchAdminJobs,
+  fetchAdminReviews,
+  fetchAdminStats,
+  fetchAdminUsers,
+  fetchAdminVouchers,
+  syncAdminChange,
+} from '@/services/admin';
+
+const GREEN = '#16A34A';
+
+export default function AdminScreen() {
+  const { width } = useWindowDimensions();
+  const compact = width < 900;
+  const { session, profile, signInWithPhone, loading } = useAuth();
+  const [pageId, setPageId] = useState('dashboard');
+  const [openIds, setOpenIds] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [stores, setStores] = useState(seedAdminStores);
+  const [error, setError] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const liveReady = useRef(false);
+
+  const page = findAdminPage(pageId);
+
+  const load = useCallback(async () => {
+    if (!profile?.is_admin) return;
+    setError('');
+    try {
+      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats] = await Promise.all([
+        fetchAdminStats(),
+        fetchAdminJobs(),
+        fetchAdminUsers(),
+        fetchAdminBids(),
+        fetchAdminVouchers(),
+        fetchAdminReviews(),
+        fetchAdminChats(),
+      ]);
+      setStats(nextStats);
+      if (!liveReady.current) {
+        liveReady.current = true;
+        setStores((prev) =>
+          mergeLiveAdminData(prev, {
+            jobs: nextJobs,
+            users: nextUsers,
+            bids: nextBids,
+            vouchers: nextVouchers,
+            reviews: nextReviews,
+            chats: nextChats,
+          })
+        );
+      }
+    } catch (err) {
+      setError(err.message ?? 'Không tải được dữ liệu quản trị.');
+    }
+  }, [profile?.is_admin]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load().catch(() => {});
+    }, [load])
+  );
+
+  const maxTrend = useMemo(
+    () => Math.max(1, ...(stats?.trend || []).map((item) => item.count)),
+    [stats]
+  );
+
+  const toggleGroup = (id) => {
+    setOpenIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  };
+
+  const commit = async (action, row) => {
+    const target = findAdminPage(pageId);
+    setError('');
+    setStores((prev) => {
+      const list = prev[pageId] || [];
+      if (action === 'delete') {
+        return { ...prev, [pageId]: list.filter((item) => item.id !== row.id) };
+      }
+      if (action === 'create') {
+        return { ...prev, [pageId]: [{ ...row, id: `moi-${Date.now()}` }, ...list] };
+      }
+      return {
+        ...prev,
+        [pageId]: list.map((item) => (item.id === row.id ? { ...item, ...row } : item)),
+      };
+    });
+    try {
+      await syncAdminChange(target, action, row);
+    } catch (err) {
+      setError(err.message || 'Đã lưu trên màn hình. Máy chủ chưa nhận thay đổi này.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={GREEN} />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return (
+      <SafeAreaView style={styles.loginSafe}>
+        <Text style={styles.loginTitle}>Đăng nhập quản trị</Text>
+        <Text style={styles.loginHint}>Dùng số điện thoại và mật khẩu của tài khoản được cấp quyền quản trị.</Text>
+        <TextInput style={styles.input} placeholder="Số điện thoại" value={phone} onChangeText={setPhone} />
+        <TextInput
+          style={styles.input}
+          placeholder="Mật khẩu"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Pressable
+          style={styles.loginBtn}
+          onPress={async () => {
+            setError('');
+            try {
+              await signInWithPhone({ phone, password });
+            } catch (err) {
+              setError(err.message ?? 'Đăng nhập thất bại.');
+            }
+          }}>
+          <Text style={styles.loginBtnText}>Vào bảng điều khiển</Text>
+        </Pressable>
+        <Pressable onPress={() => router.replace('/landing')}>
+          <Text style={styles.back}>← Về trang giới thiệu</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile?.is_admin) {
+    return (
+      <SafeAreaView style={styles.loginSafe}>
+        <Text style={styles.loginTitle}>Chưa có quyền quản trị</Text>
+        <Text style={styles.loginHint}>
+          Tài khoản này chưa được mở khu vực quản trị. Cần bật quyền quản trị cho số điện thoại đang đăng nhập.
+        </Text>
+        <Pressable onPress={() => router.replace('/(tabs)/account')}>
+          <Text style={styles.back}>← Về tài khoản</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  const showMenu = !compact || menuOpen;
+
+  return (
+    <View style={styles.shell}>
+      {compact && menuOpen ? <Pressable style={styles.backdrop} onPress={() => setMenuOpen(false)} /> : null}
+      {showMenu ? (
+        <AdminSidebar
+          pageId={pageId}
+          openIds={openIds}
+          onToggle={toggleGroup}
+          onSelect={(id) => {
+            setPageId(id);
+            setMenuOpen(false);
+            if (id !== 'dashboard') {
+              const next = findAdminPage(id);
+              if (next.parentId) {
+                setOpenIds((current) => (current.includes(next.parentId) ? current : [...current, next.parentId]));
+              }
+            }
+          }}
+          floating={compact}
+        />
+      ) : null}
+
+      <ScrollView style={styles.main} contentContainerStyle={styles.mainInner}>
+        {compact ? (
+          <Pressable style={styles.menuBtn} onPress={() => setMenuOpen(true)}>
+            <Ionicons name="menu" size={18} color="#0F172A" />
+            <Text style={styles.menuBtnText}>Mở menu</Text>
+          </Pressable>
+        ) : null}
+
+        <Text style={styles.h1}>{page.label}</Text>
+        {page.parentLabel ? <Text style={styles.crumb}>{page.parentLabel}</Text> : null}
+        {pageId === 'dashboard' ? (
+          <Text style={styles.sub}>Tổng quan hiệu suất nền tảng Việc Nhanh</Text>
+        ) : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {pageId === 'dashboard' && stats ? (
+          <>
+            <View style={styles.cards}>
+              <Stat title="Tổng người dùng" value={stats.totalUsers} icon="people" />
+              <Stat title="Người dùng hoạt động" value={stats.activeUsers} icon="pulse" />
+              <Stat title="Tổng việc" value={stats.totalJobs} icon="briefcase" />
+              <Stat title="Việc đang mở" value={stats.openJobs} icon="folder-open" />
+              <Stat title="Tổng đề xuất" value={stats.totalBids} icon="pricetags" />
+              <Stat title="Đề xuất chờ" value={stats.pendingBids} icon="time" />
+              <Stat title="Danh mục" value={stats.totalCategories} icon="grid" />
+              <Stat title="Tin chờ duyệt" value={stats.pendingJobs} icon="alert-circle" />
+            </View>
+            <View style={styles.charts}>
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Xu hướng đăng việc (10 ngày)</Text>
+                <View style={styles.bars}>
+                  {(stats.trend || []).map((item) => (
+                    <View key={item.key} style={styles.barCol}>
+                      <View style={[styles.bar, { height: 8 + (item.count / maxTrend) * 110 }]} />
+                      <Text style={styles.barLabel}>{item.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Phân bố trạng thái việc</Text>
+                <Legend color={GREEN} label={`Đang mở ${stats.byStatus.open}`} />
+                <Legend color="#6366F1" label={`Đã nhận ${stats.byStatus.assigned}`} />
+                <Legend color="#0EA5E9" label={`Hoàn thành ${stats.byStatus.completed}`} />
+                <Legend color="#F43F5E" label={`Đã đóng ${stats.byStatus.cancelled}`} />
+                <Legend color="#F59E0B" label={`Chờ duyệt ${stats.byStatus.pending}`} />
+                <Text style={styles.donutNum}>{stats.totalJobs}</Text>
+                <Text style={styles.donutCap}>tổng việc</Text>
+              </View>
+            </View>
+          </>
+        ) : null}
+
+        {page.board ? (
+          <AdminWorkBoard
+            page={page}
+            rows={stores[pageId] || []}
+            people={stores['users-all'] || []}
+            onCommit={commit}
+          />
+        ) : page.fields ? (
+          <AdminCrudPanel page={page} rows={stores[pageId] || []} onCommit={commit} />
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+function Stat({ title, value, icon }) {
+  return (
+    <View style={styles.stat}>
+      <View>
+        <Text style={styles.statLabel}>{title}</Text>
+        <Text style={styles.statValue}>{value}</Text>
+      </View>
+      <View style={styles.statIcon}>
+        <Ionicons name={icon} size={18} color={GREEN} />
+      </View>
+    </View>
+  );
+}
+
+function Legend({ color, label }) {
+  return (
+    <View style={styles.legend}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#F4F6F8',
+    ...(Platform.OS === 'web' ? { height: '100vh', maxHeight: '100vh' } : null),
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    zIndex: 10,
+  },
+  main: { flex: 1 },
+  mainInner: { padding: 20, paddingBottom: 48 },
+  menuBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  menuBtnText: { fontWeight: '800', color: '#0F172A' },
+  h1: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
+  crumb: { color: '#94A3B8', fontWeight: '700', marginBottom: 4 },
+  sub: { color: '#64748B', marginBottom: 16 },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  stat: {
+    width: 240,
+    minWidth: 200,
+    flexGrow: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+  },
+  statLabel: { color: '#64748B', fontWeight: '700', fontSize: 12 },
+  statValue: { fontSize: 28, fontWeight: '800', color: '#0F172A', marginTop: 6 },
+  statIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  charts: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16 },
+  chartCard: {
+    flex: 1,
+    minWidth: 280,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+  },
+  chartTitle: { fontWeight: '800', marginBottom: 12, color: '#0F172A' },
+  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 140 },
+  barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
+  bar: { width: '70%', backgroundColor: '#93C5FD', borderRadius: 8 },
+  barLabel: { fontSize: 9, color: '#94A3B8', marginTop: 4 },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { color: '#475569', fontSize: 13 },
+  donutNum: { fontSize: 36, fontWeight: '800', color: GREEN, marginTop: 12 },
+  donutCap: { color: '#64748B' },
+  input: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    height: 44,
+    paddingHorizontal: 12,
+  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loginSafe: { flex: 1, padding: 24, justifyContent: 'center', backgroundColor: '#F8FAFC', gap: 10 },
+  loginTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A' },
+  loginHint: { color: '#64748B', marginBottom: 8, lineHeight: 20 },
+  loginBtn: {
+    backgroundColor: Colors.primary,
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loginBtnText: { color: '#FFFFFF', fontWeight: '800' },
+  back: { color: Colors.primary, fontWeight: '700', marginTop: 8 },
+  error: { color: '#DC2626', marginBottom: 8 },
+});

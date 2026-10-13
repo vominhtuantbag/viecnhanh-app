@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "682424325193",
+    "project_id": "viecnhanh-303ff",
+    "storage_bucket": "viecnhanh-303ff.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:682424325193:android:88e3a9a8c946952da95b98",
+        "android_client_info": {
+          "package_name": "com.vominhtuantbag.appmuabanviec"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQIDZIJLayjGTzrR_IfG7M16ge4sibp0Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

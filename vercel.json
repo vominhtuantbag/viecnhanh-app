@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm run export:web",
+  "outputDirectory": "dist",
+  "devCommand": "npm run web",
+  "installCommand": "npm install",
+  "framework": null,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/job/:id", "destination": "/job/[id]" },
+    { "source": "/chat/:id", "destination": "/chat/[id]" },
+    { "source": "/user/:id", "destination": "/user/[id]" },
+    { "source": "/:path*", "destination": "/" }
+  ]
+}
