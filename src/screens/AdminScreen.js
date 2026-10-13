@@ -16,11 +16,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AdminCrudPanel from '@/components/AdminCrudPanel';
 import AdminSidebar from '@/components/AdminSidebar';
+import AdminUserBoard from '@/components/AdminUserBoard';
 import AdminWorkBoard from '@/components/AdminWorkBoard';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
-import { findAdminPage, mergeLiveAdminData, seedAdminStores } from '@/data/adminMenu';
+import { findAdminPage, mergeLiveAdminData, replaceAdminUsers, seedAdminStores } from '@/data/adminMenu';
 import {
+  adminCreateUser,
   fetchAdminBids,
   fetchAdminChats,
   fetchAdminJobs,
@@ -32,6 +34,7 @@ import {
 } from '@/services/admin';
 
 const GREEN = '#16A34A';
+const USER_LISTS = ['users-list', 'users-verify', 'users-all', 'users-workers', 'users-posters', 'admins-list', 'users-create'];
 
 export default function AdminScreen() {
   const { width } = useWindowDimensions();
@@ -63,19 +66,20 @@ export default function AdminScreen() {
         fetchAdminChats(),
       ]);
       setStats(nextStats);
-      if (!liveReady.current) {
+      setStores((prev) => {
+        const base = liveReady.current
+          ? prev
+          : mergeLiveAdminData(prev, {
+              jobs: nextJobs,
+              users: nextUsers,
+              bids: nextBids,
+              vouchers: nextVouchers,
+              reviews: nextReviews,
+              chats: nextChats,
+            });
         liveReady.current = true;
-        setStores((prev) =>
-          mergeLiveAdminData(prev, {
-            jobs: nextJobs,
-            users: nextUsers,
-            bids: nextBids,
-            vouchers: nextVouchers,
-            reviews: nextReviews,
-            chats: nextChats,
-          })
-        );
-      }
+        return replaceAdminUsers(base, nextUsers);
+      });
     } catch (err) {
       setError(err.message ?? 'Không tải được dữ liệu quản trị.');
     }
@@ -99,7 +103,32 @@ export default function AdminScreen() {
   const commit = async (action, row) => {
     const target = findAdminPage(pageId);
     setError('');
+    if (target.live === 'users' && action === 'create') {
+      try {
+        await adminCreateUser(row);
+        const fresh = await fetchAdminUsers();
+        setStores((prev) => replaceAdminUsers(prev, fresh));
+      } catch (err) {
+        const message = err.message || 'Không tạo được tài khoản.';
+        setError(message);
+        throw err;
+      }
+      return;
+    }
     setStores((prev) => {
+      if (target.live === 'users') {
+        const next = { ...prev };
+        if (action === 'delete') {
+          for (const key of USER_LISTS) {
+            next[key] = (next[key] || []).filter((item) => item.id !== row.id);
+          }
+          return next;
+        }
+        for (const key of USER_LISTS) {
+          next[key] = (next[key] || []).map((item) => (item.id === row.id ? { ...item, ...row } : item));
+        }
+        return next;
+      }
       const list = prev[pageId] || [];
       if (action === 'delete') {
         return { ...prev, [pageId]: list.filter((item) => item.id !== row.id) };
@@ -115,7 +144,9 @@ export default function AdminScreen() {
     try {
       await syncAdminChange(target, action, row);
     } catch (err) {
-      setError(err.message || 'Đã lưu trên màn hình. Máy chủ chưa nhận thay đổi này.');
+      const message = err.message || 'Đã lưu trên màn hình. Máy chủ chưa nhận thay đổi này.';
+      setError(message);
+      throw err;
     }
   };
 
@@ -251,11 +282,13 @@ export default function AdminScreen() {
           </>
         ) : null}
 
-        {page.board ? (
+        {page.board === 'users' || page.board === 'verify' || page.board === 'create' ? (
+          <AdminUserBoard page={page} rows={stores[pageId] || []} onCommit={commit} />
+        ) : page.board ? (
           <AdminWorkBoard
             page={page}
             rows={stores[pageId] || []}
-            people={stores['users-all'] || []}
+            people={stores['users-list'] || stores['users-all'] || []}
             onCommit={commit}
           />
         ) : page.fields ? (

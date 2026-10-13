@@ -10,8 +10,8 @@ const fallbackUrl = 'https://trjyeetrtzkwhwgsvkta.supabase.co';
 const fallbackAnonKey =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyanllZXRydHprd2h3Z3N2a3RhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNTE4MjQsImV4cCI6MjEwNjkyNzgyNH0.fFGMd83noeo_tPgajjyPeTay9Atud4TC0MAdzp0QwBU';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || extra.supabaseUrl || fallbackUrl;
-const supabaseAnonKey =
+export const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || extra.supabaseUrl || fallbackUrl;
+export const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   extra.supabaseAnonKey ||

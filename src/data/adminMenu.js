@@ -112,9 +112,10 @@ export const ADMIN_MENU = [
     icon: 'people-outline',
     children: [
       {
-        id: 'users-all',
-        label: 'Tất cả người dùng',
-        hint: 'Hồ sơ thành viên đang có trên hệ thống.',
+        id: 'users-list',
+        label: 'Người dùng',
+        hint: 'Danh sách thành viên, cộng tiền hoặc khoá tài khoản.',
+        board: 'users',
         live: 'users',
         fields: [
           { key: 'name', label: 'Họ tên', required: true },
@@ -125,45 +126,28 @@ export const ADMIN_MENU = [
         ],
       },
       {
-        id: 'users-workers',
-        label: 'Người làm việc',
-        hint: 'Thành viên đã gửi đề xuất giá.',
+        id: 'users-verify',
+        label: 'Xác minh',
+        hint: 'Duyệt hồ sơ đã gửi giấy tờ.',
+        board: 'verify',
         live: 'users',
         fields: [
           { key: 'name', label: 'Họ tên', required: true },
           { key: 'phone', label: 'Số điện thoại' },
-          { key: 'wallet', label: 'Số dư ví', type: 'number', money: true },
-          { key: 'role', label: 'Quyền', type: 'select', options: ROLE },
+          { key: 'email', label: 'Email' },
         ],
       },
       {
-        id: 'users-posters',
-        label: 'Người đăng việc',
-        hint: 'Thành viên đã đăng tin.',
+        id: 'users-create',
+        label: 'Thêm người dùng',
+        hint: 'Tạo hồ sơ mới cho quản trị theo dõi.',
+        board: 'create',
         live: 'users',
         fields: [
           { key: 'name', label: 'Họ tên', required: true },
-          { key: 'phone', label: 'Số điện thoại' },
-          { key: 'wallet', label: 'Số dư ví', type: 'number', money: true },
-          { key: 'role', label: 'Quyền', type: 'select', options: ROLE },
-        ],
-      },
-      {
-        id: 'users-locked',
-        label: 'Tài khoản bị khoá',
-        hint: 'Danh sách tạm để theo dõi tài khoản cần khoá.',
-        fields: [
-          { key: 'name', label: 'Họ tên', required: true },
-          { key: 'phone', label: 'Số điện thoại' },
-          { key: 'reason', label: 'Lý do khoá', required: true },
-          { key: 'status', label: 'Trạng thái', type: 'select', options: [
-            { value: 'on', label: 'Đang khoá' },
-            { value: 'off', label: 'Đã mở khoá' },
-          ] },
-        ],
-        seed: [
-          { name: 'Nguyễn Văn An', phone: '0901111222', reason: 'Spam tin việc', status: 'on' },
-          { name: 'Trần Thị Bích', phone: '0913333444', reason: 'Báo cáo lừa đảo', status: 'on' },
+          { key: 'phone', label: 'Số điện thoại', required: true },
+          { key: 'email', label: 'Email' },
+          { key: 'wallet', label: 'Số dư ví ban đầu', type: 'number', money: true },
         ],
       },
     ],
@@ -808,14 +792,33 @@ function chatToRow(row) {
   };
 }
 
+function handleFrom(name, phone, code) {
+  if (code) return `@${String(code).toLowerCase()}`;
+  const base = String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 18);
+  if (base) return `@${base}`;
+  const tail = String(phone || '').replace(/\D/g, '').slice(-4);
+  return tail ? `@user${tail}` : '@thanhvien';
+}
+
 function userToRow(user) {
+  const name = user.full_name || 'Chưa đặt tên';
   return {
     id: user.id,
-    name: user.full_name || 'Chưa đặt tên',
+    name,
+    handle: handleFrom(name, user.phone, user.referral_code),
     phone: user.phone || '',
     email: user.email || '',
     wallet: String(user.wallet_balance ?? 0),
     role: user.is_admin ? 'admin' : 'member',
+    verified: !!user.id_verified,
+    status: user.is_banned ? 'banned' : 'active',
+    createdAt: user.created_at || '',
   };
 }
 
@@ -830,6 +833,17 @@ function voucherToRow(row) {
   };
 }
 
+export function replaceAdminUsers(stores, users = []) {
+  const userRows = users.map(userToRow);
+  return {
+    ...stores,
+    'users-list': userRows,
+    'users-verify': userRows,
+    'users-all': userRows,
+    'admins-list': userRows.filter((row) => row.role === 'admin'),
+  };
+}
+
 export function mergeLiveAdminData(stores, { jobs = [], users = [], bids = [], vouchers = [], reviews = [], chats = [] }) {
   const next = { ...stores };
   const jobRows = jobs.map(jobToRow);
@@ -841,6 +855,8 @@ export function mergeLiveAdminData(stores, { jobs = [], users = [], bids = [], v
   next['tasks-bids'] = bids.map(bidToRow);
   next['tasks-reviews'] = reviews.map(reviewToRow);
   next['tasks-chats'] = chats.map(chatToRow);
+  next['users-list'] = userRows;
+  next['users-verify'] = userRows;
   next['users-all'] = userRows;
   next['users-workers'] = userRows.filter((row) => workerIds.has(row.id));
   next['users-posters'] = userRows.filter((row) => posterIds.has(row.id));

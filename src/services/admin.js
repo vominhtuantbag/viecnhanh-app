@@ -1,5 +1,9 @@
+import { createClient } from '@supabase/supabase-js';
+
 import { CATEGORIES } from '@/data/categories';
-import { supabase } from '@/lib/supabase';
+import { toAuthErrorMessage } from '@/lib/auth-errors';
+import { parseVnPhone } from '@/lib/phone';
+import { supabase, supabaseAnonKey, supabaseUrl } from '@/lib/supabase';
 
 export async function fetchAdminStats() {
   const [users, jobs, bids] = await Promise.all([
@@ -68,14 +72,58 @@ export async function fetchAdminJobs() {
   return plain.data || [];
 }
 
+const USER_SELECTS = [
+  'id, full_name, phone, email, wallet_balance, is_admin, referral_code, created_at, completed_jobs, id_verified, is_banned',
+  'id, full_name, phone, email, wallet_balance, is_admin, referral_code, created_at, completed_jobs, id_verified',
+  'id, full_name, phone, email, wallet_balance, is_admin, referral_code, created_at, completed_jobs',
+];
+
 export async function fetchAdminUsers() {
-  const result = await supabase
-    .from('profiles')
-    .select('id, full_name, phone, email, wallet_balance, is_admin, referral_code, created_at, completed_jobs')
-    .order('created_at', { ascending: false })
-    .limit(300);
-  if (result.error) return [];
-  return result.data || [];
+  let lastError = null;
+  for (const columns of USER_SELECTS) {
+    const result = await supabase
+      .from('profiles')
+      .select(columns)
+      .order('created_at', { ascending: false })
+      .limit(300);
+    if (!result.error) return result.data || [];
+    lastError = result.error;
+  }
+  throw new Error(lastError?.message || 'Không tải được danh sách người dùng.');
+}
+
+export async function adminCreateUser({ name, phone, password, wallet }) {
+  const parsed = parseVnPhone(phone);
+  if (!parsed) throw new Error('Số điện thoại không hợp lệ. Dùng số Việt Nam, ví dụ 0912 345 678.');
+  if (!password || password.length < 6) throw new Error('Mật khẩu cần ít nhất 6 ký tự.');
+
+  const signup = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: `viecnhanh-signup-${Date.now()}`,
+    },
+  });
+  const created = await signup.auth.signUp({
+    email: parsed.email,
+    password,
+    options: {
+      data: {
+        phone: parsed.e164,
+        full_name: String(name || '').trim(),
+        auth_provider: 'phone',
+      },
+    },
+  });
+  if (created.error) throw new Error(toAuthErrorMessage(created.error));
+  if (!created.data?.user?.id) throw new Error('Không tạo được tài khoản.');
+
+  const amount = Number(wallet);
+  if (Number.isFinite(amount) && amount >= 0 && amount !== 50000) {
+    await supabase.from('profiles').update({ wallet_balance: amount }).eq('id', created.data.user.id);
+  }
+  return created.data.user;
 }
 
 export async function fetchAdminBids() {
@@ -203,6 +251,30 @@ export async function syncAdminChange(page, action, row) {
   if (page.live === 'users' && saved && action !== 'create') {
     if (action === 'delete') {
       await removeRow('profiles', row.id);
+      return;
+    }
+    if (action === 'credit') {
+      const result = await supabase
+        .from('profiles')
+        .update({ wallet_balance: Number(row.wallet) || 0 })
+        .eq('id', row.id);
+      if (result.error) throw new Error(result.error.message || 'Không cộng tiền được.');
+      return;
+    }
+    if (action === 'ban') {
+      const result = await supabase
+        .from('profiles')
+        .update({ is_banned: row.status === 'banned' })
+        .eq('id', row.id);
+      if (result.error) throw new Error('Đã đổi trên màn hình. Máy chủ chưa lưu được trạng thái khoá.');
+      return;
+    }
+    if (action === 'verify') {
+      const result = await supabase
+        .from('profiles')
+        .update({ id_verified: !!row.verified })
+        .eq('id', row.id);
+      if (result.error) throw new Error(result.error.message || 'Không cập nhật xác minh được.');
       return;
     }
     const patch = {
