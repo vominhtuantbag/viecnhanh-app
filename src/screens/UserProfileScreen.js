@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import StarRow from '@/components/StarRow';
-import UserIdentityCard from '@/components/UserIdentityCard';
 import { Colors, Radius, Shadow } from '@/constants/colors';
-import { fetchPublicProfile } from '@/services/profiles';
+import { useCatalog } from '@/data/catalog';
+import { displayPhone, isPhoneAliasEmail } from '@/lib/phone';
+import { chosenSkills, fetchPublicProfile, initialsFromName } from '@/services/profiles';
 
 function formatWhen(value) {
   if (!value) return '';
@@ -24,8 +26,10 @@ function roleLabel(role) {
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams();
   const userId = Array.isArray(id) ? id[0] : id;
+  const catalog = useCatalog();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const skills = chosenSkills(user?.skillIds);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +44,10 @@ export default function UserProfileScreen() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, catalog]);
+
+  const phone = user?.phone ? displayPhone(user.phone) : '';
+  const email = user?.email && !isPhoneAliasEmail(user.email) ? user.email : '';
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -52,9 +59,41 @@ export default function UserProfileScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.card}>
-            <UserIdentityCard user={user} />
-            <Text style={styles.completed}>{user.completedJobs} việc đã hoàn thành</Text>
+            {user.avatarUrl ? (
+              <Image source={{ uri: user.avatarUrl }} style={styles.avatar} contentFit="cover" />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.initials}>{initialsFromName(user.fullName)}</Text>
+              </View>
+            )}
+            <Text style={styles.name}>{user.fullName}</Text>
+            <Text style={styles.badge}>{user.idVerified ? 'Đã xác minh CCCD' : 'Chưa xác minh'}</Text>
+            {phone ? <Text style={styles.meta}>{phone}</Text> : null}
+            {email ? <Text style={styles.meta}>{email}</Text> : null}
+            {user.createdAt ? <Text style={styles.meta}>Tham gia {formatWhen(user.createdAt)}</Text> : null}
+
+            <View style={styles.stats}>
+              <Stat value={user.reviewsCount ? Number(user.ratingAvg).toFixed(1) : '—'} label="Điểm" />
+              <Stat value={String(user.reviewsCount || 0)} label="Đánh giá" />
+              <Stat value={String(user.completedJobs || 0)} label="Việc xong" />
+            </View>
+            <View style={styles.stars}>
+              <StarRow rating={user.ratingAvg} />
+            </View>
           </View>
+
+          <Text style={styles.section}>Kỹ năng</Text>
+          {skills.length === 0 ? (
+            <Text style={styles.empty}>Chưa chọn kỹ năng.</Text>
+          ) : (
+            <View style={styles.chips}>
+              {skills.map((item) => (
+                <View key={item.id} style={styles.chip}>
+                  <Text style={styles.chipText}>{item.name}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           <Text style={styles.section}>Đánh giá ({user.reviews?.length || 0})</Text>
           {(user.reviews || []).length === 0 ? (
@@ -77,69 +116,76 @@ export default function UserProfileScreen() {
   );
 }
 
+function Stat({ value, label }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  loader: {
-    marginTop: 40,
-  },
-  missing: {
-    padding: 24,
-    textAlign: 'center',
-    color: Colors.textMuted,
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 32,
-  },
+  safe: { flex: 1, backgroundColor: Colors.background },
+  loader: { marginTop: 40 },
+  missing: { padding: 24, textAlign: 'center', color: Colors.textMuted },
+  content: { padding: 20, paddingBottom: 32 },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.lg,
-    padding: 16,
+    padding: 20,
+    alignItems: 'center',
     ...Shadow.card,
   },
-  completed: {
-    marginTop: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.primarySoft,
   },
-  section: {
-    marginTop: 22,
-    marginBottom: 10,
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.text,
+  avatarFallback: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  empty: {
-    color: Colors.textMuted,
+  initials: { color: '#FFFFFF', fontWeight: '800', fontSize: 28 },
+  name: { marginTop: 12, fontSize: 22, fontWeight: '800', color: Colors.text, textAlign: 'center' },
+  badge: { marginTop: 6, color: Colors.primary, fontWeight: '700', fontSize: 13 },
+  meta: { marginTop: 4, color: Colors.textMuted, fontSize: 13 },
+  stats: { marginTop: 16, flexDirection: 'row', alignSelf: 'stretch', gap: 8 },
+  stat: {
+    flex: 1,
+    backgroundColor: Colors.primarySoft,
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
+  statValue: { fontSize: 18, fontWeight: '800', color: Colors.text },
+  statLabel: { marginTop: 2, fontSize: 12, color: Colors.textMuted, fontWeight: '700' },
+  stars: { marginTop: 12 },
+  section: { marginTop: 22, marginBottom: 10, fontSize: 16, fontWeight: '800', color: Colors.text },
+  empty: { color: Colors.textMuted },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipText: { color: Colors.text, fontWeight: '700', fontSize: 13 },
   review: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     padding: 14,
     marginBottom: 8,
   },
-  reviewTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  reviewDate: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
-  reviewRole: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  reviewComment: {
-    marginTop: 6,
-    color: Colors.textMuted,
-    lineHeight: 20,
-  },
+  reviewTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  reviewDate: { fontSize: 12, color: Colors.textLight },
+  reviewRole: { marginTop: 6, fontSize: 12, fontWeight: '700', color: Colors.primary },
+  reviewComment: { marginTop: 6, color: Colors.textMuted, lineHeight: 20 },
 });

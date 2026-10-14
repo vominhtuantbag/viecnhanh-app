@@ -7,6 +7,7 @@ import { AreaPicker } from '@/components/AreaPicker';
 import { JobCard } from '@/components/JobCard';
 import { useJobs } from '@/context/JobsContext';
 import { isJobLive } from '@/data/jobs';
+import { sameProvince } from '@/data/locations';
 
 export default function HomeScreen() {
   const { jobs, loading, error, refreshJobs } = useJobs();
@@ -16,7 +17,7 @@ export default function HomeScreen() {
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
       if (!isJobLive(job)) return false;
-      if (provinceId && job.provinceId !== provinceId) return false;
+      if (provinceId && !sameProvince(job.provinceId, provinceId)) return false;
       if (wardId && job.wardId !== wardId) return false;
       return true;
     });

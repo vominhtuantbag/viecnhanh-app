@@ -1,27 +1,77 @@
-import { useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import BannerCarousel from '@/components/BannerCarousel';
 import { Colors, Radius, Shadow } from '@/constants/colors';
-import { POPULAR_CATEGORIES } from '@/data/categories';
+import { useAuth } from '@/context/AuthContext';
+import { replaceCatalogMains, useCatalog, visibleMains } from '@/data/catalog';
+import { fetchActiveMainCategories, fetchHomeBanners, FALLBACK_BANNERS } from '@/services/homeContent';
+
+function openBanner(item) {
+  const value = String(item?.link || '').trim();
+  if (!value) return;
+  if (/^https?:\/\//i.test(value)) {
+    Linking.openURL(value).catch(() => {});
+    return;
+  }
+  const path = value.startsWith('/') ? value : `/${value}`;
+  if (path === '/browse' || path === '/home') {
+    router.push('/(tabs)/browse');
+    return;
+  }
+  if (path === '/rewards' || path === '/promotions' || path === '/quests') {
+    router.push('/settings/quests');
+    return;
+  }
+  if (path === '/create' || path === '/post') {
+    router.push('/create');
+    return;
+  }
+  const job = path.match(/^\/jobs\/([^/]+)/);
+  if (job) {
+    router.push(`/job/${job[1]}`);
+    return;
+  }
+  router.push(path);
+}
 
 export default function PostTaskScreen() {
-  const [query, setQuery] = useState('');
+  const { profile } = useAuth();
+  const catalog = useCatalog();
+  const [banners, setBanners] = useState(FALLBACK_BANNERS);
+  const [remoteCategories, setRemoteCategories] = useState(null);
+  const name = String(profile?.full_name || '').trim();
+  const categories = remoteCategories || visibleMains(catalog);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      Promise.all([fetchHomeBanners(), fetchActiveMainCategories()])
+        .then(([nextBanners, nextCategories]) => {
+          if (cancelled) return;
+          if (nextBanners?.length) setBanners(nextBanners);
+          if (nextCategories?.length) {
+            setRemoteCategories(nextCategories);
+            replaceCatalogMains(nextCategories);
+          }
+        })
+        .catch(() => {});
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
 
   function goToCreate(extra = {}) {
     router.push({
       pathname: '/create',
       params: {
-        title: extra.title ?? query,
+        title: extra.title ?? '',
         categoryId: extra.categoryId ?? '',
       },
     });
@@ -37,48 +87,35 @@ export default function PostTaskScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.hero}>
-          Đăng việc nhanh.{'\n'}
-          Nhận việc ngay.
-        </Text>
-        <Text style={styles.sub}>
-          Mô tả nhu cầu trong vài từ — người làm việc sẽ gửi đề xuất.
+        <Text style={styles.hero} numberOfLines={2}>
+          {name ? `Chào, ${name}!` : 'Chào!'}
         </Text>
 
-        <Pressable style={styles.search} onPress={() => goToCreate()}>
-          <Ionicons name="search" size={20} color={Colors.primary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Bạn cần làm gì? Mô tả ngắn gọn..."
-            placeholderTextColor={Colors.textLight}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={() => goToCreate()}
-            returnKeyType="next"
-          />
-          <Pressable style={styles.goBtn} onPress={() => goToCreate()}>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-          </Pressable>
-        </Pressable>
+        <BannerCarousel banners={banners} onOpen={openBanner} />
 
         <Text style={styles.section}>Danh mục phổ biến</Text>
         <View style={styles.grid}>
-          {POPULAR_CATEGORIES.map((item) => (
-            <Pressable
-              key={item.id}
-              style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
-              onPress={() => goToCreate({ categoryId: item.id, title: item.name })}>
-              <View style={styles.iconWrap}>
-                <Ionicons name={item.icon} size={24} color={Colors.primary} />
-              </View>
-              <Text style={styles.tileName} numberOfLines={2}>
-                {item.name}
-              </Text>
-            </Pressable>
+          {categories.map((item) => (
+            <View key={item.id} style={styles.cell}>
+              <Pressable
+                style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
+                onPress={() => goToCreate({ categoryId: item.id, title: item.name })}>
+                <View style={styles.iconWrap}>
+                  {item.iconUrl ? (
+                    <Image source={{ uri: item.iconUrl }} style={styles.catIcon} contentFit="contain" />
+                  ) : (
+                    <Ionicons name={item.icon || 'pricetag-outline'} size={24} color={Colors.primary} />
+                  )}
+                </View>
+                <Text style={styles.tileName} numberOfLines={2}>
+                  {item.name}
+                </Text>
+              </Pressable>
+            </View>
           ))}
         </View>
 
-        <View style={styles.banner}>
+        <Pressable style={styles.banner} onPress={() => goToCreate()}>
           <View style={styles.bannerIcon}>
             <Ionicons name="flash" size={22} color={Colors.primary} />
           </View>
@@ -86,7 +123,7 @@ export default function PostTaskScreen() {
             <Text style={styles.bannerTitle}>Cần gấp? Đăng việc ngay</Text>
             <Text style={styles.bannerText}>Nhận đề xuất trong vài phút từ người làm việc gần bạn.</Text>
           </View>
-        </View>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -123,45 +160,11 @@ const styles = StyleSheet.create({
   },
   hero: {
     marginTop: 18,
-    fontSize: 34,
+    fontSize: 32,
     lineHeight: 40,
     fontWeight: '800',
     color: Colors.text,
     letterSpacing: -0.6,
-  },
-  sub: {
-    marginTop: 10,
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.textMuted,
-  },
-  search: {
-    marginTop: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.xl,
-    paddingLeft: 16,
-    paddingRight: 8,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadow.card,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: Colors.text,
-    paddingVertical: 10,
-  },
-  goBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   section: {
     marginTop: 28,
@@ -173,10 +176,14 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    marginHorizontal: -6,
+  },
+  cell: {
+    width: '33.333%',
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
   tile: {
-    width: 108,
     backgroundColor: Colors.surface,
     borderRadius: Radius.lg,
     paddingVertical: 16,
@@ -195,6 +202,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  catIcon: {
+    width: 28,
+    height: 28,
   },
   tileName: {
     fontSize: 12,
@@ -205,7 +217,7 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   banner: {
-    marginTop: 24,
+    marginTop: 12,
     flexDirection: 'row',
     gap: 12,
     backgroundColor: Colors.primarySoft,

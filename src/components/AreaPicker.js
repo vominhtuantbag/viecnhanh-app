@@ -1,29 +1,43 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
 import { Colors, Radius } from '@/constants/colors';
-import { PROVINCES, getProvinceById, getWardById } from '@/data/locations';
+import { useCatalog, visibleProvinces } from '@/data/catalog';
+import { getProvinceById, getWardById } from '@/data/locations';
 
 export function AreaPicker({ provinceId, wardId, onChange }) {
+  const catalog = useCatalog();
   const [openField, setOpenField] = useState(null);
+  const [query, setQuery] = useState('');
 
   const province = getProvinceById(provinceId);
   const ward = getWardById(provinceId, wardId);
+  const visible = visibleProvinces(catalog);
+
+  useEffect(() => {
+    setQuery('');
+  }, [openField]);
 
   const options = useMemo(() => {
-    if (openField === 'province') {
-      return PROVINCES.map((item) => ({ id: item.id, name: item.name }));
-    }
-    const wards = getProvinceById(provinceId)?.wards ?? [];
-    return wards.map((item) => ({ id: item.id, name: item.name }));
-  }, [openField, provinceId]);
+    const source =
+      openField === 'province'
+        ? visible.map((item) => ({ id: item.id, name: item.name }))
+        : (visible.find((item) => item.id === province?.id)?.wards ?? []).map((item) => ({
+            id: item.id,
+            name: item.name,
+          }));
+    const text = query.trim().toLowerCase();
+    if (!text) return source;
+    return source.filter((item) => item.name.toLowerCase().includes(text));
+  }, [openField, province?.id, query, visible]);
 
   function selectOption(id) {
     if (openField === 'province') {
@@ -38,14 +52,14 @@ export function AreaPicker({ provinceId, wardId, onChange }) {
     <View style={styles.row}>
       <SelectButton
         label="Tỉnh/Thành"
-        value={province?.name ?? 'Chọn'}
+        value={province && province.status !== 'hide' ? province.name : 'Chọn'}
         onPress={() => setOpenField('province')}
       />
       <SelectButton
         label="Xã/Phường"
-        value={ward?.name ?? 'Chọn'}
-        onPress={() => province && setOpenField('ward')}
-        disabled={!province}
+        value={ward && ward.status !== 'hide' && province?.status !== 'hide' ? ward.name : 'Chọn'}
+        onPress={() => province && province.status !== 'hide' && setOpenField('ward')}
+        disabled={!province || province.status === 'hide'}
       />
 
       <Modal visible={Boolean(openField)} transparent animationType="fade">
@@ -54,6 +68,13 @@ export function AreaPicker({ provinceId, wardId, onChange }) {
             <Text style={styles.sheetTitle}>
               {openField === 'province' ? 'Chọn Tỉnh/Thành' : 'Chọn Xã/Phường'}
             </Text>
+            <TextInput
+              style={styles.search}
+              placeholder="Tìm tên"
+              placeholderTextColor={Colors.textLight}
+              value={query}
+              onChangeText={setQuery}
+            />
             <FlatList
               data={options}
               keyExtractor={(item) => item.id}
@@ -127,6 +148,15 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 16,
     fontWeight: '800',
+    marginBottom: 8,
+    color: Colors.text,
+  },
+  search: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 8,
     color: Colors.text,
   },

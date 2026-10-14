@@ -11,8 +11,10 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Colors } from '@/constants/colors';
-import { CATEGORIES, getCategoryById } from '@/data/categories';
+import { getCategoryById } from '@/data/categories';
+import { useCatalog, visibleMains, visibleSubs } from '@/data/catalog';
 import { formatPrice } from '@/data/jobs';
+import AdminListShell from '@/components/AdminListShell';
 
 const POST_TABS = [
   { id: 'all', label: 'Tất cả' },
@@ -27,6 +29,12 @@ const BID_TABS = [
   { id: 'pending', label: 'Chờ chọn' },
   { id: 'accepted', label: 'Được chọn' },
   { id: 'rejected', label: 'Từ chối' },
+];
+
+const CHAT_TABS = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'active', label: 'Đang nhắn' },
+  { id: 'empty', label: 'Chưa có tin' },
 ];
 
 const REVIEW_TABS = [
@@ -80,6 +88,15 @@ function sameDayOrRange(createdAt, fromText, toText) {
   return true;
 }
 
+function choiceOptions(rows, key, allLabel) {
+  const values = [];
+  rows.forEach((row) => {
+    const value = String(row[key] || '').trim();
+    if (value && !values.includes(value)) values.push(value);
+  });
+  return [{ value: '', label: allLabel }].concat(values.map((value) => ({ value, label: value })));
+}
+
 function emptyDraft(fields) {
   const draft = {};
   for (const field of fields) {
@@ -88,7 +105,11 @@ function emptyDraft(fields) {
   return draft;
 }
 
-export default function AdminWorkBoard({ page, rows, people, onCommit }) {
+export default function AdminWorkBoard({ page, rows, people, onCommit, compact = false }) {
+  const catalog = useCatalog();
+  const categoryChoices = visibleMains(catalog)
+    .map((item) => ({ value: item.id, label: item.name }))
+    .concat(visibleSubs(catalog).map((item) => ({ value: item.id, label: item.name })));
   const fields = page.fields || [];
   const [tab, setTab] = useState('all');
   const [draftFilters, setDraftFilters] = useState({ query: '', from: '', to: '', category: '', user: '', location: '' });
@@ -111,11 +132,34 @@ export default function AdminWorkBoard({ page, rows, people, onCommit }) {
       if (page.board === 'posts' && tab !== 'all' && row.status !== tab) return false;
       if (page.board === 'bids' && tab !== 'all' && row.status !== tab) return false;
       if (page.board === 'reviews' && tab !== 'all' && String(row.rating) !== tab) return false;
+      if (page.board === 'chats' && tab === 'active' && !(Number(row.messageCount) > 0)) return false;
+      if (page.board === 'chats' && tab === 'empty' && Number(row.messageCount) > 0) return false;
       if (!sameDayOrRange(row.createdAt, filters.from, filters.to)) return false;
       if (page.board === 'posts') {
-        if (filters.category && row.categoryId !== filters.category) return false;
+        if (filters.category && row.categoryId !== filters.category && getCategoryById(row.categoryId)?.parentId !== filters.category) return false;
         if (filters.user && row.ownerId !== filters.user && row.owner !== filters.user) return false;
         if (filters.location && !String(row.location || '').toLowerCase().includes(filters.location.trim().toLowerCase())) {
+          return false;
+        }
+      }
+      if (page.board === 'bids') {
+        if (filters.category && row.task !== filters.category) return false;
+        if (filters.user && row.tasker !== filters.user) return false;
+        if (filters.location && !String(row.note || '').toLowerCase().includes(filters.location.trim().toLowerCase())) {
+          return false;
+        }
+      }
+      if (page.board === 'reviews') {
+        if (filters.category && row.reviewer !== filters.category) return false;
+        if (filters.user && row.reviewee !== filters.user) return false;
+        if (filters.location && !String(row.comment || '').toLowerCase().includes(filters.location.trim().toLowerCase())) {
+          return false;
+        }
+      }
+      if (page.board === 'chats') {
+        if (filters.category && row.poster !== filters.category) return false;
+        if (filters.user && row.tasker !== filters.user) return false;
+        if (filters.location && !String(row.task || '').toLowerCase().includes(filters.location.trim().toLowerCase())) {
           return false;
         }
       }
@@ -168,140 +212,79 @@ export default function AdminWorkBoard({ page, rows, people, onCommit }) {
     setEditor(null);
   };
 
-  const tabs = page.board === 'posts' ? POST_TABS : page.board === 'bids' ? BID_TABS : page.board === 'reviews' ? REVIEW_TABS : [];
+  const tabs = page.board === 'posts' ? POST_TABS : page.board === 'bids' ? BID_TABS : page.board === 'reviews' ? REVIEW_TABS : CHAT_TABS;
   const userOptions = [{ value: '', label: 'Tất cả người dùng' }].concat(
     (people || []).map((person) => ({ value: person.id, label: person.name || 'Chưa đặt tên' }))
   );
+  const dropdowns =
+    page.board === 'posts'
+      ? [
+          {
+            key: 'category',
+            placeholder: 'Tất cả danh mục',
+            options: [{ value: '', label: 'Tất cả danh mục' }].concat(categoryChoices),
+          },
+          { key: 'user', placeholder: 'Tất cả người dùng', options: userOptions },
+        ]
+      : page.board === 'bids'
+        ? [
+            { key: 'category', placeholder: 'Tất cả tin đăng', options: choiceOptions(rows, 'task', 'Tất cả tin đăng') },
+            { key: 'user', placeholder: 'Tất cả người báo giá', options: choiceOptions(rows, 'tasker', 'Tất cả người báo giá') },
+          ]
+        : page.board === 'reviews'
+          ? [
+              { key: 'category', placeholder: 'Tất cả người đánh giá', options: choiceOptions(rows, 'reviewer', 'Tất cả người đánh giá') },
+              { key: 'user', placeholder: 'Tất cả người được đánh giá', options: choiceOptions(rows, 'reviewee', 'Tất cả người được đánh giá') },
+            ]
+          : [
+              { key: 'category', placeholder: 'Tất cả người đăng', options: choiceOptions(rows, 'poster', 'Tất cả người đăng') },
+              { key: 'user', placeholder: 'Tất cả người làm', options: choiceOptions(rows, 'tasker', 'Tất cả người làm') },
+            ];
+  const textPlaceholder =
+    page.board === 'posts' ? 'Nhập khu vực' : page.board === 'bids' ? 'Nhập ghi chú' : page.board === 'reviews' ? 'Nhập nhận xét' : 'Nhập tin đăng';
+  const blankFilters = { query: '', from: '', to: '', category: '', user: '', location: '' };
 
   return (
-    <View style={styles.card}>
-      <View style={styles.topRow}>
-        {page.board === 'chats' ? <Text style={styles.cardTitle}>Tin nhắn</Text> : <TabRow tabs={tabs} tab={tab} onChange={setTab} />}
-        <View style={styles.searchRow}>
-          {page.board !== 'chats' ? (
-            <TextInput
-              style={styles.search}
-              placeholder="Tìm kiếm"
-              placeholderTextColor={Colors.textLight}
-              value={draftFilters.query}
-              onChangeText={(query) => setDraftFilters((current) => ({ ...current, query }))}
+    <>
+      <AdminListShell
+        title={page.label}
+        subtitle={page.hint}
+        tabs={tabs}
+        tab={tab}
+        onTab={setTab}
+        draft={draftFilters}
+        onDraft={(patch) => setDraftFilters((current) => ({ ...current, ...patch }))}
+        onApply={() => setFilters(draftFilters)}
+        onClear={() => {
+          setDraftFilters(blankFilters);
+          setFilters(blankFilters);
+        }}
+        onAdd={openCreate}
+        dropdowns={dropdowns}
+        textPlaceholder={textPlaceholder}
+        fromRow={fromRow}
+        toRow={toRow}
+        total={filtered.length}
+        pageSize={pageSize}
+        onPageSize={setPageSize}
+        pageIndex={safePage}
+        pageCount={pageCount}
+        onPage={setPageIndex}>
+        <Header board={page.board} />
+        {visible.length === 0 ? (
+          <Text style={styles.empty}>Chưa có dòng nào. Bấm Thêm để tạo, rồi dùng nút ba chấm để sửa hoặc xoá.</Text>
+        ) : (
+          visible.map((row, index) => (
+            <DataRow
+              key={row.id}
+              board={page.board}
+              row={row}
+              index={fromRow + index}
+              onAction={() => setActionRow(row)}
             />
-          ) : null}
-          <TextInput
-            style={styles.date}
-            placeholder="Từ ngày"
-            placeholderTextColor={Colors.textLight}
-            value={draftFilters.from}
-            onChangeText={(from) => setDraftFilters((current) => ({ ...current, from }))}
-          />
-          <TextInput
-            style={styles.date}
-            placeholder="Đến ngày"
-            placeholderTextColor={Colors.textLight}
-            value={draftFilters.to}
-            onChangeText={(to) => setDraftFilters((current) => ({ ...current, to }))}
-          />
-          <Pressable style={styles.iconBtn} onPress={() => setFilters(draftFilters)}>
-            <Ionicons name="search" size={16} color="#FFFFFF" />
-          </Pressable>
-          <Pressable style={styles.addBtn} onPress={openCreate}>
-            <Text style={styles.addText}>Thêm</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {page.board === 'posts' ? (
-        <View style={styles.filterRow}>
-          <SelectBox
-            value={draftFilters.category}
-            placeholder="Tất cả danh mục"
-            options={[{ value: '', label: 'Tất cả danh mục' }].concat(
-              CATEGORIES.map((item) => ({ value: item.id, label: item.name }))
-            )}
-            onChange={(category) => setDraftFilters((current) => ({ ...current, category }))}
-          />
-          <SelectBox
-            value={draftFilters.user}
-            placeholder="Tất cả người dùng"
-            options={userOptions}
-            onChange={(user) => setDraftFilters((current) => ({ ...current, user }))}
-          />
-          <TextInput
-            style={styles.location}
-            placeholder="Nhập khu vực"
-            placeholderTextColor={Colors.textLight}
-            value={draftFilters.location}
-            onChangeText={(location) => setDraftFilters((current) => ({ ...current, location }))}
-          />
-          <Pressable style={styles.filterBtn} onPress={() => setFilters(draftFilters)}>
-            <Ionicons name="search" size={14} color="#FFFFFF" />
-            <Text style={styles.filterText}>Lọc</Text>
-          </Pressable>
-          <Pressable
-            style={styles.clearBtn}
-            onPress={() => {
-              const blank = { query: '', from: '', to: '', category: '', user: '', location: '' };
-              setDraftFilters(blank);
-              setFilters(blank);
-            }}>
-            <Ionicons name="close" size={14} color="#FFFFFF" />
-            <Text style={styles.filterText}>Xoá lọc</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.table}>
-          <Header board={page.board} />
-          {visible.length === 0 ? (
-            <Text style={styles.empty}>Chưa có dòng nào. Bấm Thêm để tạo, rồi dùng nút ba chấm để sửa hoặc xoá.</Text>
-          ) : (
-            visible.map((row, index) => (
-              <DataRow
-                key={row.id}
-                board={page.board}
-                row={row}
-                index={fromRow + index}
-                onAction={() => setActionRow(row)}
-              />
-            ))
-          )}
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Hiển thị {fromRow}–{toRow} của {filtered.length} dòng
-        </Text>
-        <View style={styles.pageSize}>
-          <Text style={styles.footerText}>Mỗi trang</Text>
-          {PAGE_SIZES.map((size) => (
-            <Pressable key={size} style={[styles.sizeBtn, pageSize === size && styles.sizeOn]} onPress={() => setPageSize(size)}>
-              <Text style={[styles.sizeText, pageSize === size && styles.sizeTextOn]}>{size}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.pager}>
-          <Pressable style={styles.pageBtn} onPress={() => setPageIndex((current) => Math.max(0, current - 1))}>
-            <Ionicons name="chevron-back" size={16} color={Colors.primary} />
-          </Pressable>
-          {Array.from({ length: pageCount }, (_, index) => index)
-            .slice(Math.max(0, safePage - 2), Math.max(0, safePage - 2) + 5)
-            .map((index) => (
-              <Pressable
-                key={index}
-                style={[styles.pageBtn, index === safePage && styles.pageOn]}
-                onPress={() => setPageIndex(index)}>
-                <Text style={[styles.pageNum, index === safePage && styles.pageNumOn]}>{index + 1}</Text>
-              </Pressable>
-            ))}
-          <Pressable
-            style={styles.pageBtn}
-            onPress={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}>
-            <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-          </Pressable>
-        </View>
-      </View>
+          ))
+        )}
+      </AdminListShell>
 
       <Modal visible={!!actionRow} transparent animationType="fade" onRequestClose={() => setActionRow(null)}>
         <View style={styles.backdrop}>
@@ -392,7 +375,7 @@ export default function AdminWorkBoard({ page, rows, people, onCommit }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </>
   );
 }
 
@@ -411,11 +394,46 @@ function TabRow({ tabs, tab, onChange }) {
   );
 }
 
-function SelectBox({ value, placeholder, options, onChange }) {
+function workCardBits(board, row) {
+  if (board === 'posts') {
+    const category = getCategoryById(row.categoryId)?.name || row.category || 'Khác';
+    return {
+      title: row.title || 'Tin đăng',
+      lines: [row.owner, category, formatPrice(row.price), `${row.bids || 0} báo giá`].filter(Boolean),
+      status: row.status,
+      date: formatAdminDate(row.createdAt),
+    };
+  }
+  if (board === 'bids') {
+    return {
+      title: row.task || 'Báo giá',
+      lines: [row.tasker, formatPrice(row.price)].filter(Boolean),
+      status: row.status,
+      date: formatAdminDate(row.createdAt),
+    };
+  }
+  if (board === 'reviews') {
+    const rating = Math.max(0, Math.min(5, Number(row.rating) || 0));
+    return {
+      title: row.task || 'Đánh giá',
+      lines: [row.reviewer, row.reviewee, row.comment].filter(Boolean),
+      extra: `${'★'.repeat(rating)}${'☆'.repeat(5 - rating)} (${rating}/5)`,
+      date: formatAdminDate(row.createdAt),
+    };
+  }
+  const count = Number(row.messageCount) || 0;
+  return {
+    title: row.task || 'Tin nhắn',
+    lines: [row.poster, row.tasker, row.lastMessage].filter(Boolean),
+    extra: `${count} tin nhắn`,
+  };
+}
+
+function SelectBox({ value, placeholder, options, onChange, compact = false }) {
   const [open, setOpen] = useState(false);
   const label = options.find((item) => item.value === value)?.label || placeholder;
   return (
-    <View style={styles.selectWrap}>
+    <View style={[styles.selectWrap, compact && styles.selectWrapCompact]}>
       <Pressable style={styles.select} onPress={() => setOpen((current) => !current)}>
         <Text style={styles.selectText} numberOfLines={1}>
           {label}
@@ -455,7 +473,7 @@ function Header({ board }) {
   return (
     <View style={styles.trHead}>
       {labels.map((label, index) => (
-        <Text key={`${label}-${index}`} style={[styles.th, cellStyle(board, index)]}>
+        <Text key={`${label}-${index}`} style={[styles.th, cellStyle(board, index)]} numberOfLines={1}>
           {label}
         </Text>
       ))}
@@ -482,21 +500,23 @@ function PostCells({ row }) {
   const category = getCategoryById(row.categoryId)?.name || row.category || 'Khác';
   return (
     <>
-      <Text style={[styles.link, styles.colTitle]} numberOfLines={2}>
+      <Text style={[styles.link, styles.colTitle]} numberOfLines={1}>
         {row.title}
       </Text>
       <Text style={[styles.td, styles.colName]} numberOfLines={1}>
         {row.owner || '—'}
       </Text>
       <View style={styles.colChip}>
-        <Text style={styles.chip}>{category}</Text>
+        <Text style={styles.chip} numberOfLines={1}>
+          {category}
+        </Text>
       </View>
       <Text style={[styles.soft, styles.colSmall]}>{row.bids || 0} báo giá</Text>
       <Text style={[styles.td, styles.colSmall]}>{formatPrice(row.price)}</Text>
       <View style={styles.colStatus}>
         <StatusPill status={row.status} />
       </View>
-      <Text style={[styles.td, styles.colName]} numberOfLines={2}>
+      <Text style={[styles.td, styles.colName]} numberOfLines={1}>
         {row.assignee || '—'}
       </Text>
       <Text style={[styles.muted, styles.colDate]}>{formatAdminDate(row.createdAt)}</Text>
@@ -507,10 +527,12 @@ function PostCells({ row }) {
 function BidCells({ row }) {
   return (
     <>
-      <Text style={[styles.link, styles.colTitle]} numberOfLines={2}>
+      <Text style={[styles.link, styles.colTitle]} numberOfLines={1}>
         {row.task}
       </Text>
-      <Text style={[styles.td, styles.colName]}>{row.tasker || '—'}</Text>
+      <Text style={[styles.td, styles.colName]} numberOfLines={1}>
+        {row.tasker || '—'}
+      </Text>
       <Text style={[styles.td, styles.colSmall]}>{formatPrice(row.price)}</Text>
       <View style={styles.colStatus}>
         <StatusPill status={row.status} />
@@ -524,16 +546,20 @@ function ReviewCells({ row }) {
   const rating = Math.max(0, Math.min(5, Number(row.rating) || 0));
   return (
     <>
-      <Text style={[styles.link, styles.colTitle]} numberOfLines={2}>
+      <Text style={[styles.link, styles.colTitle]} numberOfLines={1}>
         {row.task}
       </Text>
-      <Text style={[styles.td, styles.colName]}>{row.reviewer || '—'}</Text>
-      <Text style={[styles.td, styles.colName]}>{row.reviewee || '—'}</Text>
+      <Text style={[styles.td, styles.colName]} numberOfLines={1}>
+        {row.reviewer || '—'}
+      </Text>
+      <Text style={[styles.td, styles.colName]} numberOfLines={1}>
+        {row.reviewee || '—'}
+      </Text>
       <Text style={[styles.stars, styles.colStars]}>
         {'★'.repeat(rating)}
         {'☆'.repeat(5 - rating)} ({rating}/5)
       </Text>
-      <Text style={[styles.td, styles.colComment]} numberOfLines={2}>
+      <Text style={[styles.td, styles.colComment]} numberOfLines={1}>
         {row.comment || '—'}
       </Text>
       <Text style={[styles.muted, styles.colDate]}>{formatAdminDate(row.createdAt)}</Text>
@@ -545,17 +571,21 @@ function ChatCells({ row }) {
   const count = Number(row.messageCount) || 0;
   return (
     <>
-      <Text style={[styles.link, styles.colTitle]} numberOfLines={2}>
+      <Text style={[styles.link, styles.colTitle]} numberOfLines={1}>
         {row.task}
       </Text>
-      <Text style={[styles.td, styles.colName]}>{row.poster || '—'}</Text>
-      <Text style={[styles.td, styles.colName]}>{row.tasker || '—'}</Text>
+      <Text style={[styles.td, styles.colName]} numberOfLines={1}>
+        {row.poster || '—'}
+      </Text>
+      <Text style={[styles.td, styles.colName]} numberOfLines={1}>
+        {row.tasker || '—'}
+      </Text>
       <View style={styles.colChip}>
         <Text style={styles.countPill}>
           {count} tin nhắn
         </Text>
       </View>
-      <Text style={[styles.td, styles.colComment]} numberOfLines={2}>
+      <Text style={[styles.td, styles.colComment]} numberOfLines={1}>
         {row.lastMessage || '—'}
       </Text>
     </>
@@ -598,7 +628,8 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
-  topRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
+  cardFill: { flex: 1, minHeight: 0 },
+  topRow: { gap: 10 },
   cardTitle: { fontSize: 18, fontWeight: '800', color: Colors.text },
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tab: {
@@ -612,10 +643,25 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   tabText: { color: Colors.text, fontWeight: '700', fontSize: 13 },
   tabTextOn: { color: '#FFFFFF' },
-  searchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', flex: 1, justifyContent: 'flex-end' },
+  searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center', width: '100%' },
+  searchRowCompact: { flexWrap: 'wrap' },
+  fieldGrow: { width: '46%', minWidth: 120, flexGrow: 1, flexBasis: '46%' },
+  mobileCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 12,
+    marginBottom: 8,
+    gap: 6,
+  },
+  mobileTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  mobileTitle: { flex: 1, fontWeight: '800', color: Colors.text, fontSize: 15 },
+  mobileMeta: { color: Colors.textMuted, lineHeight: 20 },
+  mobileFoot: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   search: {
-    minWidth: 180,
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     height: 40,
     borderRadius: 8,
     borderWidth: 1,
@@ -649,10 +695,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addText: { color: '#FFFFFF', fontWeight: '800' },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', zIndex: 5 },
+  filterRow: { flexDirection: 'row', gap: 8, alignItems: 'center', zIndex: 5 },
+  filterRowCompact: { flexWrap: 'wrap' },
   location: {
-    minWidth: 180,
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     height: 40,
     borderRadius: 8,
     borderWidth: 1,
@@ -679,12 +726,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   filterText: { color: '#FFFFFF', fontWeight: '800' },
-  table: { minWidth: 980 },
-  trHead: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primarySoft, borderRadius: 8, paddingVertical: 10 },
+  tableScroll: { flex: 1, minHeight: 0 },
+  tableContent: { flexGrow: 1 },
+  table: { width: '100%' },
+  trHead: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primarySoft, borderRadius: 8, minHeight: 44, paddingVertical: 8 },
   tr: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    minHeight: 52,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F2F4F7',
   },
@@ -693,16 +743,16 @@ const styles = StyleSheet.create({
   link: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
   muted: { color: Colors.textMuted, fontSize: 12 },
   soft: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
-  colIndex: { width: 36, paddingHorizontal: 8 },
-  colTitle: { width: 180, paddingRight: 8 },
-  colName: { width: 130, paddingRight: 8 },
-  colChip: { width: 120, paddingRight: 8 },
-  colSmall: { width: 100, paddingRight: 8 },
-  colStatus: { width: 110, paddingRight: 8 },
-  colDate: { width: 100, paddingRight: 8 },
-  colStars: { width: 150, paddingRight: 8 },
-  colComment: { width: 180, paddingRight: 8 },
-  colAction: { width: 36 },
+  colIndex: { width: 44, flexGrow: 0, flexShrink: 0, paddingHorizontal: 8 },
+  colTitle: { flex: 2.2, minWidth: 0, paddingRight: 8 },
+  colName: { flex: 1.5, minWidth: 0, paddingRight: 8 },
+  colChip: { flex: 1.4, minWidth: 0, paddingRight: 8 },
+  colSmall: { flex: 1, minWidth: 0, paddingRight: 8 },
+  colStatus: { flex: 1.15, minWidth: 0, paddingRight: 8 },
+  colDate: { flex: 1.05, minWidth: 0, paddingRight: 8 },
+  colStars: { flex: 1.35, minWidth: 0, paddingRight: 8 },
+  colComment: { flex: 1.6, minWidth: 0, paddingRight: 8 },
+  colAction: { width: 40, flexGrow: 0, flexShrink: 0 },
   chip: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.primarySoft,
@@ -751,7 +801,8 @@ const styles = StyleSheet.create({
   pageOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   pageNum: { color: Colors.primary, fontWeight: '800' },
   pageNumOn: { color: '#FFFFFF' },
-  selectWrap: { width: 200, zIndex: 4 },
+  selectWrap: { flex: 1, minWidth: 0, zIndex: 4 },
+  selectWrapCompact: { width: '100%', minWidth: 0, flexGrow: 1, flexBasis: '100%' },
   select: {
     height: 40,
     borderRadius: 8,
@@ -812,7 +863,7 @@ const styles = StyleSheet.create({
   choiceText: { color: Colors.text, fontWeight: '700' },
   choiceTextOn: { color: Colors.primary },
   error: { color: '#B42318', marginTop: 4 },
-  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  dialogActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
   ghost: { minHeight: 42, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#F2F4F7', alignItems: 'center', justifyContent: 'center' },
   ghostText: { fontWeight: '800', color: Colors.text },
   save: { minHeight: 42, paddingHorizontal: 16, borderRadius: 10, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },

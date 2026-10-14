@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import { Colors, Radius } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
 import { useJobs } from '@/context/JobsContext';
 import { getCategoryById } from '@/data/categories';
+import { useCatalog, visibleSubs } from '@/data/catalog';
 
 export default function CreateJobScreen() {
   const params = useLocalSearchParams();
@@ -29,8 +31,13 @@ export default function CreateJobScreen() {
   const [provinceId, setProvinceId] = useState('');
   const [wardId, setWardId] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const categoryId = String(params.categoryId || '');
+  const catalog = useCatalog();
+  const [categoryId, setCategoryId] = useState(() => String(params.categoryId || ''));
   const category = getCategoryById(categoryId);
+  const parentId = category?.parentId || categoryId;
+  const subs = parentId
+    ? visibleSubs(catalog).filter((item) => item.parentId === parentId)
+    : [];
 
   useEffect(() => {
     if (authLoading) return;
@@ -91,10 +98,27 @@ export default function CreateJobScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {category ? (
+          {category && category.status !== 'hide' ? (
             <Text style={styles.category}>Danh mục: {category.name}</Text>
           ) : null}
-
+          {subs.length ? (
+            <>
+              <Text style={styles.label}>Danh mục con</Text>
+              <View style={styles.chips}>
+                {subs.map((item) => {
+                  const on = categoryId === item.id;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => setCategoryId(item.id)}>
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{item.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
           <Text style={styles.label}>Tiêu đề</Text>
           <TextInput
             style={styles.input}
@@ -164,6 +188,30 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
     marginBottom: 4,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipOn: {
+    backgroundColor: Colors.primarySoft,
+    borderColor: Colors.primary,
+  },
+  chipText: {
+    color: Colors.text,
+    fontWeight: '700',
+  },
+  chipTextOn: {
+    color: Colors.primary,
   },
   label: {
     marginTop: 8,

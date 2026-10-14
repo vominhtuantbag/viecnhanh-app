@@ -12,15 +12,16 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Colors } from '@/constants/colors';
 import { formatPrice } from '@/data/jobs';
+import AdminListShell from '@/components/AdminListShell';
 
 const PAGE_SIZES = [15, 30, 50];
 const AVATAR_COLORS = ['#0052FF', '#7A5AF8', '#12B76A', '#F79009', '#EE46BC', '#0BA5EC'];
 
-const USER_FILTERS = [
-  { value: 'all', label: 'Tất cả người dùng' },
-  { value: 'active', label: 'Đang hoạt động' },
-  { value: 'banned', label: 'Đã khoá' },
-  { value: 'admin', label: 'Quản trị' },
+const USER_TABS = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'active', label: 'Đang hoạt động' },
+  { id: 'banned', label: 'Đã khoá' },
+  { id: 'admin', label: 'Quản trị' },
 ];
 
 const VERIFY_TABS = [
@@ -103,10 +104,10 @@ function handleFrom(name, phone) {
   return tail ? `@user${tail}` : '@thanhvien';
 }
 
-export default function AdminUserBoard({ page, rows, onCommit }) {
+export default function AdminUserBoard({ page, rows, onCommit, compact = false }) {
   const [filter, setFilter] = useState('all');
   const [verifyTab, setVerifyTab] = useState('all');
-  const [draft, setDraft] = useState({ query: '', from: '', to: '' });
+  const [draft, setDraft] = useState({ query: '', from: '', to: '', role: '', verified: '', phone: '' });
   const [applied, setApplied] = useState(draft);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(15);
@@ -137,7 +138,13 @@ export default function AdminUserBoard({ page, rows, onCommit }) {
       if (page.board === 'verify') {
         if (verifyTab === 'pending' && row.verified) return false;
         if (verifyTab === 'done' && !row.verified) return false;
+        if (applied.verified === 'yes' && !row.email) return false;
+        if (applied.verified === 'no' && row.email) return false;
       }
+      if (applied.role && row.role !== applied.role) return false;
+      if (page.board === 'users' && applied.verified === 'yes' && !row.verified) return false;
+      if (page.board === 'users' && applied.verified === 'no' && row.verified) return false;
+      if (applied.phone && !String(row.phone || '').includes(applied.phone.trim())) return false;
       if (!query) return true;
       return [row.name, row.handle, row.phone, row.email].join(' ').toLowerCase().includes(query);
     });
@@ -151,7 +158,7 @@ export default function AdminUserBoard({ page, rows, onCommit }) {
 
   if (page.board === 'create') {
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, styles.formCard]}>
         <Text style={styles.cardTitle}>Thêm người dùng</Text>
         <Text style={styles.hint}>Điền hồ sơ và mật khẩu. Người này đăng nhập được và hiện trong mục Người dùng.</Text>
         <Field label="Họ tên" value={form.name} onChangeText={(name) => setForm((current) => ({ ...current, name }))} />
@@ -221,141 +228,115 @@ export default function AdminUserBoard({ page, rows, onCommit }) {
     );
   }
 
+  const blankUserFilters = { query: '', from: '', to: '', role: '', verified: '', phone: '' };
+  const roleOptions = [
+    { value: '', label: 'Tất cả quyền' },
+    { value: 'member', label: 'Thành viên' },
+    { value: 'admin', label: 'Quản trị' },
+  ];
+  const secondOptions =
+    page.board === 'verify'
+      ? [
+          { value: '', label: 'Tất cả email' },
+          { value: 'yes', label: 'Có email' },
+          { value: 'no', label: 'Chưa có email' },
+        ]
+      : [
+          { value: '', label: 'Tất cả xác minh' },
+          { value: 'yes', label: 'Đã xác minh' },
+          { value: 'no', label: 'Chưa xác minh' },
+        ];
+
   return (
-    <View style={styles.card}>
-      <View style={styles.topRow}>
-        {page.board === 'verify' ? (
-          <View style={styles.tabs}>
-            {VERIFY_TABS.map((item) => {
-              const on = verifyTab === item.id;
-              return (
-                <Pressable key={item.id} style={[styles.tab, on && styles.tabOn]} onPress={() => setVerifyTab(item.id)}>
-                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{item.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : (
-          <FilterSelect value={filter} options={USER_FILTERS} onChange={setFilter} />
-        )}
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.search}
-            placeholder="Tìm kiếm"
-            placeholderTextColor={Colors.textLight}
-            value={draft.query}
-            onChangeText={(query) => setDraft((current) => ({ ...current, query }))}
-          />
-          <Text style={styles.dateLabel}>Khoảng ngày</Text>
-          <TextInput
-            style={styles.date}
-            placeholder="Từ ngày"
-            placeholderTextColor={Colors.textLight}
-            value={draft.from}
-            onChangeText={(from) => setDraft((current) => ({ ...current, from }))}
-          />
-          <TextInput
-            style={styles.date}
-            placeholder="Đến ngày"
-            placeholderTextColor={Colors.textLight}
-            value={draft.to}
-            onChangeText={(to) => setDraft((current) => ({ ...current, to }))}
-          />
-          <Pressable style={styles.iconBtn} onPress={() => setApplied(draft)}>
-            <Ionicons name="search" size={16} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.table}>
-          <View style={styles.head}>
-            {(page.board === 'verify'
-              ? ['Tên', 'Số điện thoại', 'Email', 'Xác minh', 'Ngày tham gia', '']
-              : ['Tên', 'Số điện thoại', 'Email', 'Ví', 'Ngày tham gia', 'Trạng thái', '']
-            ).map((label) => (
-              <Text key={label || 'action'} style={[styles.th, columnStyle(page.board, label)]}>
-                {label}
-              </Text>
-            ))}
-          </View>
-          {visible.length === 0 ? (
-            <Text style={styles.empty}>Chưa có người dùng trong bộ lọc này.</Text>
-          ) : (
-            visible.map((row) => (
-              <View key={row.id} style={styles.tr}>
-                <View style={[styles.nameCell, styles.colName]}>
-                  <View style={[styles.avatar, { backgroundColor: avatarColor(row.id) }]}>
-                    <Text style={styles.avatarText}>{initials(row.name)}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {row.name}
-                    </Text>
-                    <Text style={styles.handle} numberOfLines={1}>
-                      {row.handle}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[styles.td, styles.colPhone]} numberOfLines={1}>
-                  {row.phone || '—'}
+    <>
+      <AdminListShell
+        title={page.label}
+        subtitle={page.hint}
+        tabs={page.board === 'verify' ? VERIFY_TABS : USER_TABS}
+        tab={page.board === 'verify' ? verifyTab : filter}
+        onTab={page.board === 'verify' ? setVerifyTab : setFilter}
+        draft={draft}
+        onDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+        onApply={() => setApplied(draft)}
+        onClear={() => {
+          setDraft(blankUserFilters);
+          setApplied(blankUserFilters);
+        }}
+        dropdowns={[
+          { key: 'role', placeholder: 'Tất cả quyền', options: roleOptions },
+          { key: 'verified', placeholder: secondOptions[0].label, options: secondOptions },
+        ]}
+        textKey="phone"
+        textPlaceholder="Nhập số điện thoại"
+        fromRow={fromRow}
+        toRow={toRow}
+        total={filtered.length}
+        pageSize={pageSize}
+        onPageSize={setPageSize}
+        pageIndex={safePage}
+        pageCount={pageCount}
+        onPage={setPageIndex}>
+            <View style={styles.head}>
+              {(page.board === 'verify'
+                ? ['Tên', 'Số điện thoại', 'Email', 'Xác minh', 'Ngày tham gia', '']
+                : ['Tên', 'Số điện thoại', 'Email', 'Ví', 'Ngày tham gia', 'Trạng thái', '']
+              ).map((label) => (
+                <Text key={label || 'action'} style={[styles.th, columnStyle(page.board, label)]} numberOfLines={1}>
+                  {label}
                 </Text>
-                <Text style={[styles.td, styles.colEmail]} numberOfLines={1}>
-                  {row.email || '—'}
-                </Text>
-                {page.board === 'verify' ? (
-                  <View style={styles.colStatus}>
-                    <Text style={[styles.pill, row.verified ? styles.pillOn : styles.pillWait]}>
-                      {row.verified ? 'Đã xác minh' : 'Chờ xác minh'}
-                    </Text>
+              ))}
+            </View>
+            {visible.length === 0 ? (
+              <Text style={styles.empty}>Chưa có người dùng trong bộ lọc này.</Text>
+            ) : (
+              visible.map((row) => (
+                <View key={row.id} style={styles.tr}>
+                  <View style={[styles.nameCell, styles.colName]}>
+                    <View style={[styles.avatar, { backgroundColor: avatarColor(row.id) }]}>
+                      <Text style={styles.avatarText}>{initials(row.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {row.name}
+                      </Text>
+                      <Text style={styles.handle} numberOfLines={1}>
+                        {row.handle}
+                      </Text>
+                    </View>
                   </View>
-                ) : (
-                  <Text style={[styles.td, styles.colWallet]}>{formatPrice(row.wallet)}</Text>
-                )}
-                <View style={styles.colDate}>
-                  <Text style={styles.td}>{formatJoined(row.createdAt)}</Text>
-                  <Text style={styles.ago}>{relativeVi(row.createdAt)}</Text>
+                  <Text style={[styles.td, styles.colPhone]} numberOfLines={1}>
+                    {row.phone || '—'}
+                  </Text>
+                  <Text style={[styles.td, styles.colEmail]} numberOfLines={1}>
+                    {row.email || '—'}
+                  </Text>
+                  {page.board === 'verify' ? (
+                    <View style={styles.colStatus}>
+                      <Text style={[styles.pill, row.verified ? styles.pillOn : styles.pillWait]}>
+                        {row.verified ? 'Đã xác minh' : 'Chờ xác minh'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.td, styles.colWallet]}>{formatPrice(row.wallet)}</Text>
+                  )}
+                  <View style={styles.colDate}>
+                    <Text style={styles.td}>{formatJoined(row.createdAt)}</Text>
+                    <Text style={styles.ago}>{relativeVi(row.createdAt)}</Text>
+                  </View>
+                  {page.board === 'users' ? (
+                    <View style={styles.colStatus}>
+                      <Text style={[styles.pill, row.status === 'banned' ? styles.pillOff : styles.pillOn]}>
+                        {row.status === 'banned' ? 'Đã khoá' : 'Đang hoạt động'}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Pressable style={styles.more} onPress={() => setMenuRow(row)}>
+                    <Ionicons name="ellipsis-vertical" size={16} color={Colors.textMuted} />
+                  </Pressable>
                 </View>
-                {page.board === 'users' ? (
-                  <View style={styles.colStatus}>
-                    <Text style={[styles.pill, row.status === 'banned' ? styles.pillOff : styles.pillOn]}>
-                      {row.status === 'banned' ? 'Đã khoá' : 'Đang hoạt động'}
-                    </Text>
-                  </View>
-                ) : null}
-                <Pressable style={styles.more} onPress={() => setMenuRow(row)}>
-                  <Ionicons name="ellipsis-vertical" size={16} color={Colors.textMuted} />
-                </Pressable>
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Hiển thị {fromRow}–{toRow} của {filtered.length} dòng
-        </Text>
-        <View style={styles.pageSize}>
-          <Text style={styles.footerText}>Mỗi trang</Text>
-          {PAGE_SIZES.map((size) => (
-            <Pressable key={size} style={[styles.sizeBtn, pageSize === size && styles.sizeOn]} onPress={() => setPageSize(size)}>
-              <Text style={[styles.sizeText, pageSize === size && styles.sizeTextOn]}>{size}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.pager}>
-          <Pressable style={styles.pageBtn} onPress={() => setPageIndex((current) => Math.max(0, current - 1))}>
-            <Ionicons name="chevron-back" size={16} color={Colors.primary} />
-          </Pressable>
-          <Pressable style={[styles.pageBtn, styles.pageOn]}>
-            <Text style={styles.pageNumOn}>{safePage + 1}</Text>
-          </Pressable>
-          <Pressable style={styles.pageBtn} onPress={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}>
-            <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-          </Pressable>
-        </View>
-      </View>
+              ))
+            )}
+      </AdminListShell>
 
       <Modal visible={!!menuRow} transparent animationType="fade" onRequestClose={() => setMenuRow(null)}>
         <View style={styles.backdrop}>
@@ -521,7 +502,7 @@ export default function AdminUserBoard({ page, rows, onCommit }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </>
   );
 }
 
@@ -535,11 +516,11 @@ function columnStyle(board, label) {
   return styles.colAction;
 }
 
-function FilterSelect({ value, options, onChange }) {
+function FilterSelect({ value, options, onChange, compact = false }) {
   const [open, setOpen] = useState(false);
   const label = options.find((item) => item.value === value)?.label || options[0].label;
   return (
-    <View style={styles.selectWrap}>
+    <View style={[styles.selectWrap, compact && styles.selectWrapCompact]}>
       <Pressable style={styles.select} onPress={() => setOpen((current) => !current)}>
         <Text style={styles.selectText}>{label}</Text>
         <Ionicons name="chevron-down" size={14} color={Colors.textMuted} />
@@ -605,11 +586,13 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
+  cardFill: { flex: 1, minHeight: 0 },
+  formCard: { width: '100%', maxWidth: 560 },
   cardTitle: { fontSize: 18, fontWeight: '800', color: Colors.text },
   hint: { color: Colors.textMuted, lineHeight: 20 },
   note: { color: Colors.primary, fontWeight: '700' },
   error: { color: '#B42318' },
-  topRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center', zIndex: 5 },
+  topRow: { gap: 10, zIndex: 5 },
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tab: {
     paddingHorizontal: 12,
@@ -622,10 +605,25 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   tabText: { color: Colors.text, fontWeight: '700', fontSize: 13 },
   tabTextOn: { color: '#FFFFFF' },
-  searchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', flex: 1, justifyContent: 'flex-end' },
+  searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center', width: '100%' },
+  searchRowCompact: { flexWrap: 'wrap' },
+  fieldGrow: { width: '46%', minWidth: 120, flexGrow: 1, flexBasis: '46%' },
+  mobileCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 12,
+    marginBottom: 8,
+    gap: 8,
+  },
+  mobileTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mobileCopy: { flex: 1 },
+  mobileMeta: { color: Colors.textMuted, lineHeight: 20 },
+  mobileFoot: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   search: {
-    minWidth: 160,
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     height: 40,
     borderRadius: 8,
     borderWidth: 1,
@@ -651,30 +649,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  table: { minWidth: 980 },
+  tableScroll: { flex: 1, minHeight: 0 },
+  tableContent: { flexGrow: 1 },
+  table: { width: '100%' },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.primarySoft,
     borderRadius: 8,
-    paddingVertical: 10,
+    minHeight: 44,
+    paddingVertical: 8,
   },
   tr: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    minHeight: 52,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F2F4F7',
   },
   th: { fontSize: 12, fontWeight: '800', color: Colors.textMuted },
   td: { color: Colors.text, fontSize: 13 },
-  colName: { width: 220, paddingHorizontal: 8 },
-  colPhone: { width: 140, paddingRight: 8 },
-  colEmail: { width: 180, paddingRight: 8 },
-  colWallet: { width: 120, paddingRight: 8 },
-  colDate: { width: 150, paddingRight: 8 },
-  colStatus: { width: 130, paddingRight: 8 },
-  colAction: { width: 40 },
+  colName: { flex: 2.1, minWidth: 0, paddingHorizontal: 8 },
+  colPhone: { flex: 1.2, minWidth: 0, paddingRight: 8 },
+  colEmail: { flex: 1.6, minWidth: 0, paddingRight: 8 },
+  colWallet: { flex: 1, minWidth: 0, paddingRight: 8 },
+  colDate: { flex: 1.2, minWidth: 0, paddingRight: 8 },
+  colStatus: { flex: 1.15, minWidth: 0, paddingRight: 8 },
+  colAction: { width: 40, flexGrow: 0, flexShrink: 0 },
   nameCell: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFFFFF', fontWeight: '800', fontSize: 12 },
@@ -706,7 +708,8 @@ const styles = StyleSheet.create({
   },
   pageOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   pageNumOn: { color: '#FFFFFF', fontWeight: '800' },
-  selectWrap: { width: 190, zIndex: 6 },
+  selectWrap: { alignSelf: 'flex-start', minWidth: 190, zIndex: 6 },
+  selectWrapCompact: { width: '100%', minWidth: 0, flexBasis: '100%' },
   select: {
     height: 40,
     borderRadius: 8,
@@ -747,7 +750,7 @@ const styles = StyleSheet.create({
   dialog: { width: '100%', maxWidth: 460, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, gap: 8 },
   dialogTitle: { fontSize: 18, fontWeight: '800', color: Colors.text },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 4 },
-  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
+  dialogActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
   field: { gap: 6 },
   fieldLabel: { fontWeight: '700', color: Colors.textMuted },
   input: {

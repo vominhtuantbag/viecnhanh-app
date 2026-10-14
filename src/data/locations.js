@@ -1,42 +1,32 @@
-export const PROVINCES = [
-  {
-    id: 'hn',
-    name: 'Hà Nội',
-    wards: [
-      { id: 'hn-ck', name: 'Phường Cửa Nam' },
-      { id: 'hn-hk', name: 'Phường Hoàn Kiếm' },
-      { id: 'hn-da', name: 'Xã Đông Anh' },
-    ],
-  },
-  {
-    id: 'hcm',
-    name: 'TP. Hồ Chí Minh',
-    wards: [
-      { id: 'hcm-bt', name: 'Phường Bến Thành' },
-      { id: 'hcm-td', name: 'Phường Tân Định' },
-      { id: 'hcm-tb', name: 'Phường Thủ Đức' },
-    ],
-  },
-  {
-    id: 'dn',
-    name: 'Đà Nẵng',
-    wards: [
-      { id: 'dn-hc', name: 'Phường Hải Châu' },
-      { id: 'dn-tk', name: 'Phường Thanh Khê' },
-    ],
-  },
-  {
-    id: 'hp',
-    name: 'Hải Phòng',
-    wards: [
-      { id: 'hp-ng', name: 'Phường Ngô Quyền' },
-      { id: 'hp-lc', name: 'Phường Lê Chân' },
-    ],
-  },
-];
+import { getCatalog, visibleProvinces } from '@/data/catalog';
+
+const LEGACY = {
+  hn: '01',
+  hcm: '79',
+  dn: '48',
+  hp: '31',
+};
+
+export function canonicalProvinceId(id) {
+  if (!id || id === 'all') return id || '';
+  return LEGACY[id] || id;
+}
+
+export function sameProvince(left, right) {
+  return canonicalProvinceId(left) === canonicalProvinceId(right);
+}
+
+export function getProvinces() {
+  return getCatalog().provinces;
+}
+
+export function getVisibleProvinces() {
+  return visibleProvinces();
+}
 
 export function getProvinceById(provinceId) {
-  return PROVINCES.find((item) => item.id === provinceId) ?? null;
+  const id = canonicalProvinceId(provinceId);
+  return getCatalog().provinces.find((item) => item.id === id) ?? null;
 }
 
 export function getWardById(provinceId, wardId) {

@@ -15,12 +15,21 @@ import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AdminCrudPanel from '@/components/AdminCrudPanel';
+import AdminNotificationBoard from '@/components/AdminNotificationBoard';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminUserBoard from '@/components/AdminUserBoard';
 import AdminWorkBoard from '@/components/AdminWorkBoard';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
 import { findAdminPage, mergeLiveAdminData, replaceAdminUsers, seedAdminStores } from '@/data/adminMenu';
+import {
+  fetchAdminRewardClaims,
+  fetchAdminRewardTasks,
+  fetchAdminRewards,
+  saveRewardAdmin,
+} from '@/services/rewards';
+import { applyCatalogAdmin, catalogRows, replaceCatalogMains, useCatalog, withCatalogFields } from '@/data/catalog';
+import { fetchAdminBanners, fetchAdminMainCategories, saveBanner, saveMainCategory } from '@/services/homeContent';
 import {
   adminCreateUser,
   fetchAdminBids,
@@ -50,13 +59,15 @@ export default function AdminScreen() {
   const [password, setPassword] = useState('');
   const liveReady = useRef(false);
 
-  const page = findAdminPage(pageId);
+  const catalog = useCatalog();
+  const page = withCatalogFields(findAdminPage(pageId), catalog);
+  const catalogList = catalogRows(pageId, catalog);
 
   const load = useCallback(async () => {
     if (!profile?.is_admin) return;
     setError('');
     try {
-      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats] = await Promise.all([
+      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats, rewardTasks, rewardItems, rewardClaims] = await Promise.all([
         fetchAdminStats(),
         fetchAdminJobs(),
         fetchAdminUsers(),
@@ -64,7 +75,12 @@ export default function AdminScreen() {
         fetchAdminVouchers(),
         fetchAdminReviews(),
         fetchAdminChats(),
+        fetchAdminRewardTasks(),
+        fetchAdminRewards(),
+        fetchAdminRewardClaims(),
       ]);
+      const [bannerRows, categoryRows] = await Promise.all([fetchAdminBanners(), fetchAdminMainCategories()]);
+      if (categoryRows?.length) replaceCatalogMains(categoryRows);
       setStats(nextStats);
       setStores((prev) => {
         const base = liveReady.current
@@ -78,7 +94,12 @@ export default function AdminScreen() {
               chats: nextChats,
             });
         liveReady.current = true;
-        return replaceAdminUsers(base, nextUsers);
+        const next = replaceAdminUsers(base, nextUsers);
+        if (rewardTasks) next['quests-tasks'] = rewardTasks;
+        if (rewardItems) next['quests-rewards'] = rewardItems;
+        if (rewardClaims) next['quests-history'] = rewardClaims;
+        if (bannerRows) next['extras-banners'] = bannerRows;
+        return next;
       });
     } catch (err) {
       setError(err.message ?? 'Không tải được dữ liệu quản trị.');
@@ -97,12 +118,80 @@ export default function AdminScreen() {
   );
 
   const toggleGroup = (id) => {
-    setOpenIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+    setOpenIds((current) => (current[0] === id ? [] : [id]));
   };
 
   const commit = async (action, row) => {
     const target = findAdminPage(pageId);
     setError('');
+    if (pageId === 'extras-banners') {
+      try {
+        await saveBanner(action, row);
+        const fresh = await fetchAdminBanners();
+        if (fresh) setStores((prev) => ({ ...prev, 'extras-banners': fresh }));
+      } catch (err) {
+        const message = err.message || 'Không lưu được banner.';
+        const offline = /migrate_home_content|chưa có banner/i.test(message);
+        if (offline) {
+          setStores((prev) => {
+            const list = prev['extras-banners'] || [];
+            if (action === 'delete') return { ...prev, 'extras-banners': list.filter((item) => item.id !== row.id) };
+            if (action === 'create') return { ...prev, 'extras-banners': [{ ...row, id: `banner-${Date.now()}` }, ...list] };
+            return { ...prev, 'extras-banners': list.map((item) => (item.id === row.id ? { ...item, ...row } : item)) };
+          });
+        }
+        setError(message);
+        if (!offline) throw err;
+      }
+      return;
+    }
+    if (catalogRows(pageId)) {
+      try {
+        if (pageId === 'categories-main') {
+          const id = action === 'create' ? row.id || `main-${Date.now()}` : row.id;
+          const nextRow = { ...row, id };
+          try {
+            await saveMainCategory(action, nextRow);
+          } catch (err) {
+            const message = err.message || '';
+            if (!/migrate_home_content|chưa có banner/i.test(message)) throw err;
+            applyCatalogAdmin(pageId, action, nextRow);
+            setError(message);
+            return;
+          }
+          applyCatalogAdmin(pageId, action, nextRow);
+        } else {
+          applyCatalogAdmin(pageId, action, row);
+        }
+      } catch (err) {
+        const message = err.message || 'Không lưu được.';
+        setError(message);
+        throw err;
+      }
+      return;
+    }
+    if (target.live === 'reward-tasks' || target.live === 'rewards' || target.live === 'reward-claims') {
+      try {
+        await saveRewardAdmin(target.live, action, row);
+        const [rewardTasks, rewardItems, rewardClaims] = await Promise.all([
+          fetchAdminRewardTasks(),
+          fetchAdminRewards(),
+          fetchAdminRewardClaims(),
+        ]);
+        setStores((prev) => {
+          const next = { ...prev };
+          if (rewardTasks) next['quests-tasks'] = rewardTasks;
+          if (rewardItems) next['quests-rewards'] = rewardItems;
+          if (rewardClaims) next['quests-history'] = rewardClaims;
+          return next;
+        });
+      } catch (err) {
+        const message = err.message || 'Không lưu được nhiệm vụ hoặc quà.';
+        setError(message);
+        throw err;
+      }
+      return;
+    }
     if (target.live === 'users' && action === 'create') {
       try {
         await adminCreateUser(row);
@@ -161,6 +250,7 @@ export default function AdminScreen() {
   if (!session) {
     return (
       <SafeAreaView style={styles.loginSafe}>
+        <View style={styles.loginCard}>
         <Text style={styles.loginTitle}>Đăng nhập quản trị</Text>
         <Text style={styles.loginHint}>Dùng số điện thoại và mật khẩu của tài khoản được cấp quyền quản trị.</Text>
         <TextInput style={styles.input} placeholder="Số điện thoại" value={phone} onChangeText={setPhone} />
@@ -187,6 +277,7 @@ export default function AdminScreen() {
         <Pressable onPress={() => router.replace('/landing')}>
           <Text style={styles.back}>← Về trang giới thiệu</Text>
         </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -194,6 +285,7 @@ export default function AdminScreen() {
   if (!profile?.is_admin) {
     return (
       <SafeAreaView style={styles.loginSafe}>
+        <View style={styles.loginCard}>
         <Text style={styles.loginTitle}>Chưa có quyền quản trị</Text>
         <Text style={styles.loginHint}>
           Tài khoản này chưa được mở khu vực quản trị. Cần bật quyền quản trị cho số điện thoại đang đăng nhập.
@@ -201,6 +293,7 @@ export default function AdminScreen() {
         <Pressable onPress={() => router.replace('/(tabs)/account')}>
           <Text style={styles.back}>← Về tài khoản</Text>
         </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -220,16 +313,16 @@ export default function AdminScreen() {
             setMenuOpen(false);
             if (id !== 'dashboard') {
               const next = findAdminPage(id);
-              if (next.parentId) {
-                setOpenIds((current) => (current.includes(next.parentId) ? current : [...current, next.parentId]));
-              }
+              if (next.parentId) setOpenIds([next.parentId]);
+            } else {
+              setOpenIds([]);
             }
           }}
           floating={compact}
         />
       ) : null}
 
-      <ScrollView style={styles.main} contentContainerStyle={styles.mainInner}>
+      <View style={[styles.main, compact && styles.mainCompact]}>
         {compact ? (
           <Pressable style={styles.menuBtn} onPress={() => setMenuOpen(true)}>
             <Ionicons name="menu" size={18} color="#0F172A" />
@@ -237,7 +330,9 @@ export default function AdminScreen() {
           </Pressable>
         ) : null}
 
-        <Text style={styles.h1}>{page.label}</Text>
+        {pageId === 'dashboard' || page.board === 'create' ? (
+          <Text style={[styles.h1, compact && styles.h1Compact]}>{page.label}</Text>
+        ) : null}
         {page.parentLabel ? <Text style={styles.crumb}>{page.parentLabel}</Text> : null}
         {pageId === 'dashboard' ? (
           <Text style={styles.sub}>Tổng quan hiệu suất nền tảng Việc Nhanh</Text>
@@ -245,19 +340,19 @@ export default function AdminScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {pageId === 'dashboard' && stats ? (
-          <>
+          <ScrollView style={styles.boardSlot} contentContainerStyle={styles.dashScroll}>
             <View style={styles.cards}>
-              <Stat title="Tổng người dùng" value={stats.totalUsers} icon="people" />
-              <Stat title="Người dùng hoạt động" value={stats.activeUsers} icon="pulse" />
-              <Stat title="Tổng việc" value={stats.totalJobs} icon="briefcase" />
-              <Stat title="Việc đang mở" value={stats.openJobs} icon="folder-open" />
-              <Stat title="Tổng đề xuất" value={stats.totalBids} icon="pricetags" />
-              <Stat title="Đề xuất chờ" value={stats.pendingBids} icon="time" />
-              <Stat title="Danh mục" value={stats.totalCategories} icon="grid" />
-              <Stat title="Tin chờ duyệt" value={stats.pendingJobs} icon="alert-circle" />
+              <Stat title="Tổng người dùng" value={stats.totalUsers} icon="people" full={compact} />
+              <Stat title="Người dùng hoạt động" value={stats.activeUsers} icon="pulse" full={compact} />
+              <Stat title="Tổng việc" value={stats.totalJobs} icon="briefcase" full={compact} />
+              <Stat title="Việc đang mở" value={stats.openJobs} icon="folder-open" full={compact} />
+              <Stat title="Tổng đề xuất" value={stats.totalBids} icon="pricetags" full={compact} />
+              <Stat title="Đề xuất chờ" value={stats.pendingBids} icon="time" full={compact} />
+              <Stat title="Danh mục" value={stats.totalCategories} icon="grid" full={compact} />
+              <Stat title="Tin chờ duyệt" value={stats.pendingJobs} icon="alert-circle" full={compact} />
             </View>
             <View style={styles.charts}>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, compact && styles.chartCardCompact]}>
                 <Text style={styles.chartTitle}>Xu hướng đăng việc (10 ngày)</Text>
                 <View style={styles.bars}>
                   {(stats.trend || []).map((item) => (
@@ -268,7 +363,7 @@ export default function AdminScreen() {
                   ))}
                 </View>
               </View>
-              <View style={styles.chartCard}>
+              <View style={[styles.chartCard, compact && styles.chartCardCompact]}>
                 <Text style={styles.chartTitle}>Phân bố trạng thái việc</Text>
                 <Legend color={GREEN} label={`Đang mở ${stats.byStatus.open}`} />
                 <Legend color="#6366F1" label={`Đã nhận ${stats.byStatus.assigned}`} />
@@ -279,29 +374,34 @@ export default function AdminScreen() {
                 <Text style={styles.donutCap}>tổng việc</Text>
               </View>
             </View>
-          </>
-        ) : null}
-
-        {page.board === 'users' || page.board === 'verify' || page.board === 'create' ? (
-          <AdminUserBoard page={page} rows={stores[pageId] || []} onCommit={commit} />
-        ) : page.board ? (
-          <AdminWorkBoard
-            page={page}
-            rows={stores[pageId] || []}
-            people={stores['users-list'] || stores['users-all'] || []}
-            onCommit={commit}
-          />
-        ) : page.fields ? (
-          <AdminCrudPanel page={page} rows={stores[pageId] || []} onCommit={commit} />
-        ) : null}
-      </ScrollView>
+          </ScrollView>
+        ) : (
+          <View style={styles.boardSlot}>
+            {page.board === 'users' || page.board === 'verify' || page.board === 'create' ? (
+              <AdminUserBoard page={page} rows={stores[pageId] || []} onCommit={commit} compact={compact} />
+            ) : page.board === 'campaigns' ? (
+              <AdminNotificationBoard people={stores['users-list'] || []} compact={compact} />
+            ) : page.board ? (
+              <AdminWorkBoard
+                page={page}
+                rows={stores[pageId] || []}
+                people={stores['users-list'] || stores['users-all'] || []}
+                onCommit={commit}
+                compact={compact}
+              />
+            ) : page.fields ? (
+              <AdminCrudPanel key={page.id} page={page} rows={catalogList || stores[pageId] || []} onCommit={commit} />
+            ) : null}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
-function Stat({ title, value, icon }) {
+function Stat({ title, value, icon, full }) {
   return (
-    <View style={styles.stat}>
+    <View style={[styles.stat, full && styles.statFull]}>
       <View>
         <Text style={styles.statLabel}>{title}</Text>
         <Text style={styles.statValue}>{value}</Text>
@@ -334,8 +434,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.35)',
     zIndex: 10,
   },
-  main: { flex: 1 },
-  mainInner: { padding: 20, paddingBottom: 48 },
+  main: { flex: 1, minWidth: 0, padding: 20, paddingBottom: 16 },
+  mainCompact: { padding: 14, paddingBottom: 12 },
+  boardSlot: { flex: 1, minHeight: 0 },
+  dashScroll: { paddingBottom: 32 },
   menuBtn: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -349,6 +451,7 @@ const styles = StyleSheet.create({
   },
   menuBtnText: { fontWeight: '800', color: '#0F172A' },
   h1: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
+  h1Compact: { fontSize: 22 },
   crumb: { color: '#94A3B8', fontWeight: '700', marginBottom: 4 },
   sub: { color: '#64748B', marginBottom: 16 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -364,6 +467,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EEF2F6',
   },
+  statFull: { width: '100%', minWidth: 0, flexBasis: '100%' },
   statLabel: { color: '#64748B', fontWeight: '700', fontSize: 12 },
   statValue: { fontSize: 28, fontWeight: '800', color: '#0F172A', marginTop: 6 },
   statIcon: {
@@ -384,6 +488,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EEF2F6',
   },
+  chartCardCompact: { minWidth: 0, width: '100%', flexBasis: '100%' },
   chartTitle: { fontWeight: '800', marginBottom: 12, color: '#0F172A' },
   bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 140 },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
@@ -403,7 +508,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loginSafe: { flex: 1, padding: 24, justifyContent: 'center', backgroundColor: '#F8FAFC', gap: 10 },
+  loginSafe: { flex: 1, padding: 24, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  loginCard: { width: '100%', maxWidth: 420, gap: 10 },
   loginTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A' },
   loginHint: { color: '#64748B', marginBottom: 8, lineHeight: 20 },
   loginBtn: {

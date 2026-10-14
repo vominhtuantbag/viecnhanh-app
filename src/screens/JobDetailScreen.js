@@ -5,6 +5,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -33,6 +34,7 @@ import {
 } from '@/data/jobs';
 import { formatArea } from '@/data/locations';
 import { getOrCreateConversation } from '@/services/chat';
+import { recordRewardAction } from '@/services/rewards';
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -49,6 +51,17 @@ export default function JobDetailScreen() {
   const [sending, setSending] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
   const [closing, setClosing] = useState(false);
+
+  async function shareJob() {
+    try {
+      await Share.share({
+        message: `${job?.title || 'Việc trên Việc Nhanh'} — xem tin và nhận làm trên Việc Nhanh.`,
+      });
+      await recordRewardAction('share_job');
+    } catch {
+      // Người dùng đóng cửa sổ chia sẻ.
+    }
+  }
 
   useEffect(() => {
     loadJob(String(id)).catch(() => {});
@@ -238,6 +251,11 @@ export default function JobDetailScreen() {
 
           <Text style={styles.budgetLabel}>Ngân sách</Text>
           <Text style={styles.price}>{formatPrice(job.price)}</Text>
+
+          <Pressable style={styles.shareBtn} onPress={shareJob}>
+            <Ionicons name="share-social-outline" size={16} color={Colors.primary} />
+            <Text style={styles.shareText}>Chia sẻ tin này</Text>
+          </Pressable>
 
           <View style={styles.stats}>
             <Text style={styles.stat}>{statusLabel(flowStatus)}</Text>
@@ -492,6 +510,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.primary,
   },
+  shareBtn: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.primarySoft,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    minHeight: 36,
+  },
+  shareText: { color: Colors.primary, fontWeight: '800' },
   category: {
     marginTop: 8,
     color: Colors.textMuted,

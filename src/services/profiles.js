@@ -1,5 +1,40 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { findCategory, visibleSkills } from '@/data/catalog';
 import { isPhoneAliasEmail, parseVnPhone } from '@/lib/phone';
 import { supabase, unwrap } from '@/lib/supabase';
+
+function skillKey(userId) {
+  return `viecnhanh.skills.${userId}`;
+}
+
+export async function readLocalSkills(userId) {
+  if (!userId) return [];
+  try {
+    const raw = await AsyncStorage.getItem(skillKey(userId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function chosenSkills(ids) {
+  const allowed = new Set(visibleSkills().map((skill) => skill.id));
+  return (ids || []).map((id) => findCategory(id)).filter((item) => item && allowed.has(item.id));
+}
+
+export async function saveProfileSkills(userId, skillIds) {
+  const next = [...new Set((skillIds || []).filter(Boolean))];
+  await AsyncStorage.setItem(skillKey(userId), JSON.stringify(next));
+  const result = await supabase.from('profiles').update({ skill_ids: next }).eq('id', userId).select('id, skill_ids').single();
+  if (result.error) {
+    const missing = /skill_ids/i.test(result.error.message || '');
+    if (missing) return { skillIds: next, storedLocally: true };
+    throw new Error(result.error.message || 'Không lưu được kỹ năng.');
+  }
+  return { skillIds: result.data?.skill_ids || next, storedLocally: false };
+}
 
 export function isProfileComplete(profile) {
   return Boolean(profile?.full_name?.trim() && profile?.phone?.trim());
@@ -90,12 +125,26 @@ export async function fetchPublicProfile(id) {
       ? reviews.reduce((sum, item) => sum + item.rating, 0) / reviews.length
       : Number(row.rating_avg) || 0;
 
+  const done = await supabase
+    .from('jobs')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'completed')
+    .or(`hired_worker_id.eq.${id},user_id.eq.${id}`);
+  const completedFromJobs = done.error ? 0 : done.count || 0;
+  const storedSkills = Array.isArray(row.skill_ids) ? row.skill_ids.filter(Boolean) : [];
+  const skillIds = storedSkills.length ? storedSkills : await readLocalSkills(id);
+
   return {
     ...mapWorkerProfile(row, {
       id,
       ratingAvg,
       reviewsCount: reviews.length || row.reviews_count,
+      completedJobs: Math.max(Number(row.completed_jobs) || 0, completedFromJobs),
     }),
+    phone: row.phone || '',
+    email: row.email || '',
+    createdAt: row.created_at,
+    skillIds,
     reviews,
   };
 }

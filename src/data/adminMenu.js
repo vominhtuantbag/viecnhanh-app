@@ -33,6 +33,10 @@ const ROLE = [
 
 const STARS = [5, 4, 3, 2, 1].map((count) => ({ value: String(count), label: `${count} sao` }));
 const CATEGORY_OPTIONS = CATEGORIES.map((item) => ({ value: item.id, label: item.name }));
+const AREA_KIND = [
+  { value: 'province', label: 'Tỉnh/thành' },
+  { value: 'ward', label: 'Xã/phường' },
+];
 
 export const ADMIN_MENU = [
   {
@@ -158,33 +162,44 @@ export const ADMIN_MENU = [
     icon: 'pricetag-outline',
     children: [
       {
-        id: 'categories-jobs',
-        label: 'Danh mục việc',
-        hint: 'Nhóm việc hiện trên trang chủ.',
+        id: 'categories-main',
+        label: 'Danh mục chính',
+        hint: 'Nhóm việc lớn hiện trên trang chủ và bộ lọc.',
         fields: [
           { key: 'name', label: 'Tên danh mục', required: true },
-          { key: 'slug', label: 'Mã ngắn' },
-          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE },
+          { key: 'iconUrl', label: 'Icon', type: 'image', bucket: 'category-icons' },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE, tab: true },
         ],
-        seed: CATEGORIES.map((item) => ({
-          name: item.name,
-          slug: item.id,
-          status: 'show',
-        })),
+      },
+      {
+        id: 'categories-sub',
+        label: 'Danh mục con',
+        hint: 'Nhóm nhỏ hơn, luôn gắn với một danh mục chính.',
+        fields: [
+          { key: 'parentId', label: 'Danh mục chính', type: 'select', options: CATEGORY_OPTIONS, required: true },
+          { key: 'name', label: 'Tên danh mục con', required: true },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE, tab: true },
+        ],
       },
       {
         id: 'categories-skills',
         label: 'Kỹ năng',
-        hint: 'Kỹ năng gắn với người làm.',
+        hint: 'Kỹ năng thuộc một danh mục chính.',
         fields: [
+          { key: 'parentId', label: 'Danh mục chính', type: 'select', options: CATEGORY_OPTIONS, required: true },
           { key: 'name', label: 'Tên kỹ năng', required: true },
-          { key: 'group', label: 'Nhóm' },
-          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE, tab: true },
         ],
-        seed: [
-          { name: 'Sơn tường', group: 'Sơn nhà', status: 'show' },
-          { name: 'Vệ sinh máy lạnh', group: 'Điện nước', status: 'show' },
-          { name: 'Lắp kệ gỗ', group: 'Lắp ráp', status: 'show' },
+      },
+      {
+        id: 'categories-areas',
+        label: 'Khu vực',
+        hint: '34 tỉnh/thành và toàn bộ xã/phường. Xã/phường từ tỉnh cũ có hậu tố.',
+        fields: [
+          { key: 'kind', label: 'Loại', type: 'select', options: AREA_KIND, tab: true },
+          { key: 'parentId', label: 'Tỉnh/thành', type: 'select', options: [] },
+          { key: 'name', label: 'Tên', required: true },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE },
         ],
       },
     ],
@@ -390,48 +405,82 @@ export const ADMIN_MENU = [
       {
         id: 'quests-tasks',
         label: 'Nhiệm vụ',
-        hint: 'Việc nhỏ để người dùng làm và nhận thưởng.',
+        hint: 'Thêm, sửa hoặc ẩn nhiệm vụ. App chỉ hiện nhiệm vụ đang bật.',
+        live: 'reward-tasks',
         fields: [
-          { key: 'name', label: 'Tên nhiệm vụ', required: true },
-          { key: 'reward', label: 'Phần thưởng', required: true },
-          { key: 'goal', label: 'Mốc cần đạt' },
-          { key: 'status', label: 'Trạng thái', type: 'select', options: ON_OFF },
-        ],
-        seed: [
-          { name: 'Điểm danh hôm nay', reward: '2.000đ', goal: '1 lần / ngày', status: 'on' },
-          { name: 'Hoàn thành 3 việc', reward: '20.000đ', goal: '3 việc', status: 'on' },
+          { key: 'title', label: 'Tên nhiệm vụ', required: true },
+          { key: 'description', label: 'Mô tả' },
+          { key: 'actionType', label: 'Việc cần làm', type: 'select', options: [
+            { value: 'daily_checkin', label: 'Điểm danh' },
+            { value: 'golden_hour', label: 'Khung giờ vàng' },
+            { value: 'browse_jobs', label: 'Xem việc' },
+            { value: 'share_job', label: 'Chia sẻ / có lượt xem' },
+            { value: 'complete_profile', label: 'Hoàn thiện hồ sơ' },
+            { value: 'apply_job', label: 'Gửi đề xuất' },
+            { value: 'complete_job', label: 'Hoàn thành việc' },
+            { value: 'five_star', label: 'Được 5 sao' },
+            { value: 'write_review', label: 'Viết đánh giá' },
+            { value: 'post_job', label: 'Đăng tin' },
+            { value: 'refer_user', label: 'Mời bạn' },
+          ] },
+          { key: 'groupKey', label: 'Nhóm', type: 'select', options: [
+            { value: 'daily', label: 'Điểm danh' },
+            { value: 'explore', label: 'Khám phá' },
+            { value: 'core', label: 'Việc làm' },
+            { value: 'referral', label: 'Giới thiệu' },
+          ] },
+          { key: 'targetCount', label: 'Số lần cần đạt', type: 'number', required: true },
+          { key: 'rewardPoints', label: 'Xu thưởng', type: 'number', required: true },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE, tab: true },
         ],
       },
       {
         id: 'quests-rewards',
         label: 'Phần thưởng',
-        hint: 'Quà có thể đổi.',
+        hint: 'Quà người dùng đổi bằng xu.',
+        live: 'rewards',
         fields: [
-          { key: 'name', label: 'Tên quà', required: true },
-          { key: 'cost', label: 'Điểm đổi', type: 'number', required: true },
-          { key: 'stock', label: 'Số lượng', type: 'number' },
-          { key: 'status', label: 'Trạng thái', type: 'select', options: ON_OFF },
-        ],
-        seed: [
-          { name: 'Thẻ nạp 20.000đ', cost: '100', stock: '50', status: 'on' },
-          { name: 'Voucher dọn nhà', cost: '80', stock: '20', status: 'on' },
+          { key: 'title', label: 'Tên quà', required: true },
+          { key: 'type', label: 'Loại quà', type: 'select', options: [
+            { value: 'app_balance', label: 'Cộng ví' },
+            { value: 'voucher', label: 'Mã giảm giá' },
+            { value: 'badge', label: 'Huy hiệu' },
+            { value: 'boost', label: 'Lượt đẩy tin' },
+            { value: 'phone_card', label: 'Thẻ cào' },
+            { value: 'data_4g', label: 'Data 4G' },
+            { value: 'partner_voucher', label: 'Voucher đối tác' },
+            { value: 'lucky_spin', label: 'Vòng quay' },
+            { value: 'mystery_box', label: 'Hộp quà' },
+            { value: 'physical_gift', label: 'Quà hiện vật' },
+          ] },
+          { key: 'groupKey', label: 'Nhóm', type: 'select', options: [
+            { value: 'wallet', label: 'Tiền ví' },
+            { value: 'perk', label: 'Đặc quyền' },
+            { value: 'life', label: 'Tiêu dùng' },
+            { value: 'luck', label: 'May mắn' },
+          ] },
+          { key: 'value', label: 'Mệnh giá', type: 'number', money: true },
+          { key: 'pointCost', label: 'Xu cần đổi', type: 'number', required: true },
+          { key: 'stock', label: 'Số lượng còn', type: 'number' },
+          { key: 'imageUrl', label: 'Ảnh' },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE, tab: true },
         ],
       },
       {
         id: 'quests-history',
-        label: 'Lịch sử nhận quà',
-        hint: 'Ai đã nhận quà nào.',
+        label: 'Yêu cầu đổi quà',
+        hint: 'Duyệt và gửi mã thẻ cào hoặc voucher.',
+        live: 'reward-claims',
+        allowCreate: false,
         fields: [
-          { key: 'user', label: 'Người nhận', required: true },
-          { key: 'reward', label: 'Quà', required: true },
-          { key: 'when', label: 'Thời điểm' },
-          { key: 'status', label: 'Trạng thái', type: 'select', options: [
-            { value: 'sent', label: 'Đã trao' },
-            { value: 'pending', label: 'Chờ trao' },
+          { key: 'user', label: 'Người đổi', editable: false },
+          { key: 'reward', label: 'Quà', editable: false },
+          { key: 'claimCode', label: 'Mã thẻ / voucher' },
+          { key: 'status', label: 'Trạng thái', type: 'select', tab: true, options: [
+            { value: 'pending', label: 'Chờ gửi' },
+            { value: 'completed', label: 'Đã nhận' },
+            { value: 'rejected', label: 'Từ chối' },
           ] },
-        ],
-        seed: [
-          { user: 'Mai Lan', reward: 'Điểm danh 2.000đ', when: 'Hôm nay', status: 'sent' },
         ],
       },
     ],
@@ -583,23 +632,8 @@ export const ADMIN_MENU = [
       {
         id: 'notifications-push',
         label: 'Gửi thông báo',
-        hint: 'Tin nhắn đẩy tới điện thoại người dùng.',
-        fields: [
-          { key: 'title', label: 'Tiêu đề', required: true },
-          { key: 'body', label: 'Nội dung', required: true },
-          { key: 'audience', label: 'Gửi tới', type: 'select', options: [
-            { value: 'all', label: 'Mọi người' },
-            { value: 'workers', label: 'Người làm' },
-            { value: 'posters', label: 'Người đăng' },
-          ] },
-          { key: 'status', label: 'Trạng thái', type: 'select', options: [
-            { value: 'draft', label: 'Bản nháp' },
-            { value: 'sent', label: 'Đã gửi' },
-          ] },
-        ],
-        seed: [
-          { title: 'Có việc mới gần bạn', body: 'Mở app để xem tin dọn nhà.', audience: 'workers', status: 'draft' },
-        ],
+        hint: 'Chiến dịch đẩy tới điện thoại: gửi ngay, hẹn giờ hoặc lặp lại.',
+        board: 'campaigns',
       },
       {
         id: 'notifications-templates',
@@ -673,9 +707,10 @@ export const ADMIN_MENU = [
       {
         id: 'extras-banners',
         label: 'Ảnh banner',
-        hint: 'Ảnh chạy trên đầu trang.',
+        hint: 'Ảnh chạy trên đầu trang chủ. Nên giữ 3 ảnh đang hiện.',
         fields: [
           { key: 'title', label: 'Tiêu đề', required: true },
+          { key: 'imageUrl', label: 'Ảnh', type: 'image', bucket: 'banner-images' },
           { key: 'link', label: 'Đường dẫn' },
           { key: 'status', label: 'Trạng thái', type: 'select', options: SHOW_HIDE },
         ],

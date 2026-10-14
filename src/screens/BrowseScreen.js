@@ -20,9 +20,10 @@ import { BottomSheet, SheetFooter } from '@/components/BottomSheet';
 import { TaskCard } from '@/components/TaskCard';
 import { Colors, Radius } from '@/constants/colors';
 import { useJobs } from '@/context/JobsContext';
-import { CATEGORIES } from '@/data/categories';
+import { getCategoryById } from '@/data/categories';
+import { useCatalog, visibleMains } from '@/data/catalog';
 import { isJobLive } from '@/data/jobs';
-import { PROVINCES, getProvinceById } from '@/data/locations';
+import { getProvinceById, getVisibleProvinces, sameProvince } from '@/data/locations';
 
 const SORT_OPTIONS = [
   { id: 'newest', name: 'Mới nhất' },
@@ -56,6 +57,9 @@ const DEFAULTS = {
 };
 
 export default function BrowseScreen() {
+  const catalog = useCatalog();
+  const provinces = getVisibleProvinces();
+  const categoryChoices = visibleMains(catalog).map((item) => ({ id: item.id, name: item.name }));
   const { jobs, loading, error, refreshJobs, markBrowseSeen, markBrowseBlurred } = useJobs();
   const [filters, setFilters] = useState(DEFAULTS);
   const [draft, setDraft] = useState(DEFAULTS);
@@ -97,8 +101,14 @@ export default function BrowseScreen() {
 
   const filteredJobs = useMemo(() => {
     const next = jobs.filter((job) => {
-      if (filters.categoryId !== 'all' && job.categoryId !== filters.categoryId) return false;
-      if (filters.provinceId !== 'all' && job.provinceId !== filters.provinceId) return false;
+      if (
+        filters.categoryId !== 'all' &&
+        job.categoryId !== filters.categoryId &&
+        getCategoryById(job.categoryId)?.parentId !== filters.categoryId
+      ) {
+        return false;
+      }
+      if (filters.provinceId !== 'all' && !sameProvince(job.provinceId, filters.provinceId)) return false;
       if (filters.radius !== 'all' && job.distanceKm > Number(filters.radius)) return false;
       if (filters.price !== 'all' && job.price > Number(filters.price) * 1000) return false;
       if (!isJobLive(job)) return false;
@@ -115,7 +125,7 @@ export default function BrowseScreen() {
     });
 
     return next;
-  }, [jobs, filters]);
+  }, [jobs, filters, catalog]);
 
   const province = getProvinceById(filters.provinceId);
   const cityName = shortCity(province?.name);
@@ -131,9 +141,9 @@ export default function BrowseScreen() {
   const categoryName =
     filters.categoryId === 'all'
       ? 'Tất cả'
-      : CATEGORIES.find((item) => item.id === filters.categoryId)?.name;
+      : categoryChoices.find((item) => item.id === filters.categoryId)?.name;
 
-  const categoryResults = CATEGORIES.filter((item) =>
+  const categoryResults = categoryChoices.filter((item) =>
     item.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())
   );
 
@@ -238,7 +248,7 @@ export default function BrowseScreen() {
               Tất cả
             </Text>
           </Pressable>
-          {PROVINCES.map((item) => (
+          {provinces.map((item) => (
             <Pressable
               key={item.id}
               style={[styles.pill, draft.provinceId === item.id && styles.pillActive]}

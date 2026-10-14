@@ -15,8 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FilterSelect } from '@/components/FilterSelect';
 import { Colors, Radius, Shadow } from '@/constants/colors';
-import { CATEGORIES } from '@/data/categories';
-import { PROVINCES, getProvinceById } from '@/data/locations';
+import { useCatalog, visibleMains, visibleProvinces } from '@/data/catalog';
 import { useAuth } from '@/context/AuthContext';
 import {
   fetchJobAlertSettings,
@@ -26,6 +25,12 @@ import {
 } from '@/services/notifications';
 
 export default function JobAlertSettingsScreen() {
+  const catalog = useCatalog();
+  const categories = visibleMains(catalog);
+  const provinceOptions = useMemo(
+    () => [{ id: '', name: 'Tất cả tỉnh/thành' }, ...visibleProvinces(catalog).map((item) => ({ id: item.id, name: item.name }))],
+    [catalog]
+  );
   const { session, profile, refreshProfile } = useAuth();
   const [enabledOverride, setEnabledOverride] = useState(null);
   const [categoryIds, setCategoryIds] = useState([]);
@@ -63,10 +68,9 @@ export default function JobAlertSettingsScreen() {
     };
   }, [profile?.id]);
 
-  const wards = useMemo(() => getProvinceById(provinceId)?.wards ?? [], [provinceId]);
-  const provinceOptions = useMemo(
-    () => [{ id: '', name: 'Tất cả tỉnh/thành' }, ...PROVINCES.map((item) => ({ id: item.id, name: item.name }))],
-    []
+  const wards = useMemo(
+    () => visibleProvinces(catalog).find((item) => item.id === provinceId)?.wards ?? [],
+    [catalog, provinceId]
   );
 
   function toggleCategory(id) {
@@ -83,7 +87,9 @@ export default function JobAlertSettingsScreen() {
 
   function onProvinceChange(nextId) {
     setProvinceId(nextId);
-    const valid = new Set((getProvinceById(nextId)?.wards || []).map((item) => item.id));
+    const valid = new Set(
+      (visibleProvinces(catalog).find((item) => item.id === nextId)?.wards || []).map((item) => item.id)
+    );
     setWardIds((current) => current.filter((id) => valid.has(id)));
   }
 
@@ -147,7 +153,7 @@ export default function JobAlertSettingsScreen() {
           <Text style={styles.help}>Tích nhiều ngành. Để trống = nhận mọi danh mục.</Text>
           <View style={styles.actions}>
             <Pressable
-              onPress={() => setCategoryIds(CATEGORIES.map((item) => item.id))}
+              onPress={() => setCategoryIds(categories.map((item) => item.id))}
               style={styles.textBtn}>
               <Text style={styles.textBtnLabel}>Chọn tất cả</Text>
             </Pressable>
@@ -156,13 +162,13 @@ export default function JobAlertSettingsScreen() {
             </Pressable>
           </View>
           <View style={styles.card}>
-            {CATEGORIES.map((item, index) => (
+            {categories.map((item, index) => (
               <CheckRow
                 key={item.id}
                 label={item.name}
                 selected={categoryIds.includes(item.id)}
                 onPress={() => toggleCategory(item.id)}
-                last={index === CATEGORIES.length - 1}
+                last={index === categories.length - 1}
               />
             ))}
           </View>

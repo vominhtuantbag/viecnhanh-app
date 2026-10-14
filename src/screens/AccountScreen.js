@@ -14,6 +14,7 @@ const SECTIONS = [
   {
     title: 'Cài đặt tài khoản',
     items: [
+      { icon: 'ribbon-outline', label: 'Kỹ năng của tôi', hint: 'Tích những việc bạn làm được', href: '/settings/skills' },
       { icon: 'card-outline', label: 'Phương thức thanh toán', href: '/settings/payments' },
       { icon: 'notifications-outline', label: 'Tùy chọn thông báo', href: '/settings/notifications' },
     ],
@@ -78,7 +79,7 @@ export default function AccountScreen() {
         <Text style={styles.title}>Tài khoản</Text>
 
         {loggedIn ? (
-          <View style={styles.profile}>
+          <Pressable style={styles.profile} onPress={() => router.push(`/user/${profile.id}`)}>
             {profile?.avatar_url ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} contentFit="cover" />
             ) : (
@@ -102,12 +103,13 @@ export default function AccountScreen() {
             </View>
             <Pressable
               style={styles.editBtn}
-              onPress={() =>
-                router.push({ pathname: '/(auth)/complete-profile', params: { mode: 'edit' } })
-              }>
+              onPress={(event) => {
+                event?.stopPropagation?.();
+                router.push({ pathname: '/(auth)/complete-profile', params: { mode: 'edit' } });
+              }}>
               <Text style={styles.editText}>Chỉnh sửa</Text>
             </Pressable>
-          </View>
+          </Pressable>
         ) : (
           <View style={styles.guestCard}>
             <Text style={styles.guestTitle}>Đăng nhập để đăng việc & đấu giá</Text>

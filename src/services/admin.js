@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-import { CATEGORIES } from '@/data/categories';
+import { countVisibleMains } from '@/data/catalog';
 import { toAuthErrorMessage } from '@/lib/auth-errors';
 import { parseVnPhone } from '@/lib/phone';
 import { supabase, supabaseAnonKey, supabaseUrl } from '@/lib/supabase';
@@ -43,7 +43,7 @@ export async function fetchAdminStats() {
     openJobs: byStatus.open,
     totalBids: bids.count ?? bidRows.length,
     pendingBids: bidRows.filter((row) => row.status === 'pending').length,
-    totalCategories: CATEGORIES.length,
+    totalCategories: countVisibleMains(),
     pendingJobs: byStatus.pending,
     byStatus,
     trend: days,

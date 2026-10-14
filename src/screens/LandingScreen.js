@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { SITE } from '@/constants/site';
-import { CATEGORIES } from '@/data/categories';
+import { useCatalog, visibleMains } from '@/data/catalog';
 
 const STEPS = [
   { icon: 'create-outline', title: 'Đăng việc 30 giây', body: 'Mô tả việc, chọn khu vực, đưa giá.' },
@@ -14,13 +14,17 @@ const STEPS = [
 ];
 
 export default function LandingScreen() {
+  const catalog = useCatalog();
+  const categories = visibleMains(catalog).slice(0, 12);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
+  const narrow = width < 640;
+  const mid = width >= 640 && width < 900;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
-        <View style={styles.nav}>
+      <ScrollView contentContainerStyle={[styles.page, narrow && styles.pageNarrow]} showsVerticalScrollIndicator={false}>
+        <View style={[styles.nav, narrow && styles.navNarrow]}>
           <View style={styles.brand}>
             <View style={styles.logo}>
               <Ionicons name="flash" size={18} color="#FFFFFF" />
@@ -40,14 +44,14 @@ export default function LandingScreen() {
         <View style={[styles.hero, wide && styles.heroWide]}>
           <View style={styles.heroCopy}>
             <Text style={styles.eyebrow}>Ứng dụng việc lặt vặt tại Việt Nam</Text>
-            <Text style={styles.h1}>{SITE.tagline}</Text>
+            <Text style={[styles.h1, narrow && styles.h1Narrow]}>{SITE.tagline}</Text>
             <Text style={styles.lead}>{SITE.description}</Text>
-            <View style={styles.ctaRow}>
-              <Pressable style={styles.cta} onPress={() => Linking.openURL(SITE.playStoreUrl)}>
+            <View style={[styles.ctaRow, narrow && styles.ctaStack]}>
+              <Pressable style={[styles.cta, narrow && styles.ctaFull]} onPress={() => Linking.openURL(SITE.playStoreUrl)}>
                 <Ionicons name="logo-google-playstore" size={18} color="#FFFFFF" />
                 <Text style={styles.ctaText}>Tải Android</Text>
               </Pressable>
-              <Pressable style={styles.ctaGhost} onPress={() => Linking.openURL(SITE.appStoreUrl)}>
+              <Pressable style={[styles.ctaGhost, narrow && styles.ctaFull]} onPress={() => Linking.openURL(SITE.appStoreUrl)}>
                 <Ionicons name="logo-apple" size={18} color={Colors.primary} />
                 <Text style={styles.ctaGhostText}>Tải iOS</Text>
               </Pressable>
@@ -64,10 +68,10 @@ export default function LandingScreen() {
           </View>
         </View>
 
-        <Text style={styles.h2}>Làm sao để bắt đầu</Text>
-        <View style={[styles.grid, wide && styles.grid3]}>
+        <Text style={[styles.h2, narrow && styles.h2Narrow]}>Làm sao để bắt đầu</Text>
+        <View style={[styles.grid, wide && styles.grid3, mid && styles.grid2]}>
           {STEPS.map((step) => (
-            <View key={step.title} style={styles.feature}>
+            <View key={step.title} style={[styles.feature, mid && styles.featureMid]}>
               <View style={styles.featureIcon}>
                 <Ionicons name={step.icon} size={22} color={Colors.primary} />
               </View>
@@ -77,9 +81,9 @@ export default function LandingScreen() {
           ))}
         </View>
 
-        <Text style={styles.h2}>Nhóm việc phổ biến</Text>
+        <Text style={[styles.h2, narrow && styles.h2Narrow]}>Nhóm việc phổ biến</Text>
         <View style={styles.chips}>
-          {CATEGORIES.slice(0, 10).map((item) => (
+          {categories.map((item) => (
             <View key={item.id} style={styles.chip}>
               <Text style={styles.chipText}>{item.name}</Text>
             </View>
@@ -98,12 +102,15 @@ export default function LandingScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F7F9FC' },
   page: { padding: 20, paddingBottom: 48, maxWidth: 1080, width: '100%', alignSelf: 'center' },
+  pageNarrow: { padding: 16, paddingBottom: 40 },
   nav: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 28,
+    gap: 12,
   },
+  navNarrow: { flexWrap: 'wrap' },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logo: {
     width: 32,
@@ -128,8 +135,11 @@ const styles = StyleSheet.create({
   heroCopy: { flex: 1, gap: 12 },
   eyebrow: { color: Colors.primary, fontWeight: '800', textTransform: 'uppercase', fontSize: 12 },
   h1: { fontSize: 36, fontWeight: '800', color: Colors.text, letterSpacing: -0.8, lineHeight: 44 },
+  h1Narrow: { fontSize: 28, lineHeight: 36, letterSpacing: -0.4 },
   lead: { color: Colors.textMuted, fontSize: 16, lineHeight: 24, maxWidth: 520 },
   ctaRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 },
+  ctaStack: { flexDirection: 'column' },
+  ctaFull: { width: '100%', justifyContent: 'center' },
   cta: {
     flexDirection: 'row',
     gap: 8,
@@ -170,7 +180,9 @@ const styles = StyleSheet.create({
   },
   fakeCardText: { color: '#FFFFFF', fontWeight: '700' },
   h2: { fontSize: 22, fontWeight: '800', color: Colors.text, marginBottom: 14, marginTop: 8 },
+  h2Narrow: { fontSize: 20 },
   grid: { gap: 12, marginBottom: 28 },
+  grid2: { flexDirection: 'row', flexWrap: 'wrap' },
   grid3: { flexDirection: 'row' },
   feature: {
     flex: 1,
@@ -179,6 +191,7 @@ const styles = StyleSheet.create({
     padding: 16,
     ...Shadow.soft,
   },
+  featureMid: { flexGrow: 1, flexBasis: '46%', minWidth: 220 },
   featureIcon: {
     width: 40,
     height: 40,
