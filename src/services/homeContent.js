@@ -2,6 +2,14 @@ import { supabase } from '@/lib/supabase';
 
 const MISSING = /banners|danh_muc_chinh|schema cache|PGRST205|42P01|42703/i;
 
+export const FALLBACK_TIPS = [
+  { id: 'tip-quote', name: 'Mẹo vặt', body: 'Nhanh tay gửi báo giá để được xem trước.' },
+  { id: 'tip-quest', name: 'Mẹo vặt', body: 'Làm nhiệm vụ hệ thống để nhận quà' },
+  { id: 'tip-safe', name: 'Thông báo', body: 'Không chuyển tiền trước tránh lừa đảo' },
+  { id: 'tip-sale', name: 'Khuyến mãi', body: 'Mã giảm giá 10% dùng cho cả tuần nè!' },
+  { id: 'tip-guide', name: 'Hướng dẫn', body: 'Cách sử dụng app hiệu quả' },
+];
+
 export const FALLBACK_BANNERS = [
   {
     id: 'fallback-clean',
@@ -165,6 +173,76 @@ export async function saveMainCategory(action, row) {
   );
   if (result.error) throw new Error(friendlyHomeError(result.error));
   return id;
+}
+
+function mapTemplate(row) {
+  const status = row.status === 'off' || row.status === 'hide' || row.status === 'an' ? 'off' : 'on';
+  return {
+    id: row.id,
+    name: row.name || '',
+    body: row.body || '',
+    status,
+  };
+}
+
+function friendlyTemplateError(error) {
+  const message = error?.message || (typeof error === 'string' ? error : '');
+  if (/notification_templates|schema cache|PGRST205|42P01|42703/i.test(message)) {
+    return 'Máy chủ chưa có mẫu thông báo. Mở Supabase → SQL Editor, dán file supabase/migrate_home_feed.sql rồi bấm Run.';
+  }
+  return message || 'Không lưu được mẫu thông báo.';
+}
+
+async function selectTemplates() {
+  const rich = await supabase
+    .from('notification_templates')
+    .select('id, name, body, status, is_active, sort_order, created_at')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (!rich.error) return rich;
+  return supabase
+    .from('notification_templates')
+    .select('id, name, body, status, sort_order, created_at')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+}
+
+export async function fetchHomeTips() {
+  const result = await selectTemplates();
+  if (result.error) return FALLBACK_TIPS;
+  const rows = result.data || [];
+  const active = rows.filter(shown).map(mapTemplate);
+  if (!rows.length) return FALLBACK_TIPS;
+  return active;
+}
+
+export async function fetchAdminNotificationTemplates() {
+  const result = await selectTemplates();
+  if (result.error) return null;
+  return (result.data || []).map(mapTemplate);
+}
+
+export async function saveNotificationTemplate(action, row) {
+  if (action === 'delete') {
+    const result = await supabase.from('notification_templates').delete().eq('id', row.id);
+    if (result.error) throw new Error(friendlyTemplateError(result.error));
+    return null;
+  }
+  const name = String(row.name || '').trim();
+  const body = String(row.body || '').trim();
+  if (!name) throw new Error('Cần nhập tên mẫu.');
+  if (!body) throw new Error('Cần nhập nội dung.');
+  const payload = {
+    name,
+    body,
+    status: row.status === 'off' || row.status === 'hide' ? 'off' : 'on',
+  };
+  const existing = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(row.id || ''));
+  const result = existing
+    ? await supabase.from('notification_templates').update(payload).eq('id', row.id).select('id').single()
+    : await supabase.from('notification_templates').insert(payload).select('id').single();
+  if (result.error) throw new Error(friendlyTemplateError(result.error));
+  return result.data;
 }
 
 export async function uploadPublicImage(bucket, file) {

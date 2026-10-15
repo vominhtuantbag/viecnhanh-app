@@ -1,3 +1,3 @@
-import PostTaskScreen from '@/screens/PostTaskScreen';
+import HomeScreen from '@/screens/HomeScreen';
 
-export default PostTaskScreen;
+export default HomeScreen;

@@ -638,15 +638,18 @@ export const ADMIN_MENU = [
       {
         id: 'notifications-templates',
         label: 'Mẫu thông báo',
-        hint: 'Câu chữ dùng lại nhiều lần.',
+        hint: 'Câu chạy dưới ảnh bìa trang chủ. Chỉ mẫu đang bật mới hiện, và tự đổi mỗi 10 giây.',
         fields: [
           { key: 'name', label: 'Tên mẫu', required: true },
           { key: 'body', label: 'Nội dung', required: true },
           { key: 'status', label: 'Trạng thái', type: 'select', options: ON_OFF },
         ],
         seed: [
-          { name: 'Việc được duyệt', body: 'Tin của bạn đã được mở.', status: 'on' },
-          { name: 'Có người chào giá', body: 'Có đề xuất mới cho tin của bạn.', status: 'on' },
+          { name: 'Mẹo vặt', body: 'Nhanh tay gửi báo giá để được xem trước.', status: 'on' },
+          { name: 'Mẹo vặt', body: 'Làm nhiệm vụ hệ thống để nhận quà', status: 'on' },
+          { name: 'Thông báo', body: 'Không chuyển tiền trước tránh lừa đảo', status: 'on' },
+          { name: 'Khuyến mãi', body: 'Mã giảm giá 10% dùng cho cả tuần nè!', status: 'on' },
+          { name: 'Hướng dẫn', body: 'Cách sử dụng app hiệu quả', status: 'on' },
         ],
       },
     ],

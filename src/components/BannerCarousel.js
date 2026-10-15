@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 
 import { Colors, Radius } from '@/constants/colors';
 
-export default function BannerCarousel({ banners = [], onOpen }) {
+export default function BannerCarousel({ banners = [], onOpen, tone = 'plain' }) {
   const scrollRef = useRef(null);
   const [width, setWidth] = useState(0);
   const [index, setIndex] = useState(0);
@@ -23,10 +23,11 @@ export default function BannerCarousel({ banners = [], onOpen }) {
   }, [banners.length, width]);
 
   if (!banners.length) return null;
+  const onBlue = tone === 'blue';
 
   return (
     <View
-      style={styles.wrap}
+      style={[styles.wrap, onBlue && styles.wrapBlue]}
       onLayout={(event) => {
         const next = Math.round(event.nativeEvent.layout.width);
         if (next > 0 && next !== width) setWidth(next);
@@ -67,7 +68,7 @@ export default function BannerCarousel({ banners = [], onOpen }) {
           })}
         </ScrollView>
       ) : (
-        <View style={styles.placeholder} />
+        <View style={[styles.placeholder, onBlue && styles.placeholderBlue]} />
       )}
       <View style={styles.dots}>
         {banners.map((item, dot) => (
@@ -78,7 +79,13 @@ export default function BannerCarousel({ banners = [], onOpen }) {
               scrollRef.current?.scrollTo({ x: dot * width, animated: true });
             }}
             hitSlop={8}>
-            <View style={[styles.dot, dot === index && styles.dotOn]} />
+            <View
+              style={[
+                styles.dot,
+                onBlue && styles.dotBlue,
+                dot === index && (onBlue ? styles.dotOnBlue : styles.dotOn),
+              ]}
+            />
           </Pressable>
         ))}
       </View>
@@ -88,6 +95,7 @@ export default function BannerCarousel({ banners = [], onOpen }) {
 
 const styles = StyleSheet.create({
   wrap: { marginTop: 18 },
+  wrapBlue: { marginTop: 0 },
   slide: {
     height: 168,
     borderRadius: Radius.lg,
@@ -109,6 +117,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   placeholder: { height: 168, borderRadius: Radius.lg, backgroundColor: Colors.primarySoft },
+  placeholderBlue: { backgroundColor: 'rgba(255,255,255,0.18)' },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -124,5 +133,12 @@ const styles = StyleSheet.create({
   dotOn: {
     width: 18,
     backgroundColor: Colors.primary,
+  },
+  dotBlue: {
+    backgroundColor: 'rgba(255,255,255,0.45)',
+  },
+  dotOnBlue: {
+    width: 18,
+    backgroundColor: '#FFFFFF',
   },
 });

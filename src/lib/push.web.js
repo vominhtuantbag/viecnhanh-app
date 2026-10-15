@@ -26,7 +26,7 @@ export async function getInitialPushData() {
   return null;
 }
 
-export function openFromPushData() {}
+export { openFromPushData } from '@/lib/push-nav';
 
 export function resetSyncedPushToken() {}
 

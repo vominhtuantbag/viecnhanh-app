@@ -29,7 +29,14 @@ import {
   saveRewardAdmin,
 } from '@/services/rewards';
 import { applyCatalogAdmin, catalogRows, replaceCatalogMains, useCatalog, withCatalogFields } from '@/data/catalog';
-import { fetchAdminBanners, fetchAdminMainCategories, saveBanner, saveMainCategory } from '@/services/homeContent';
+import {
+  fetchAdminBanners,
+  fetchAdminMainCategories,
+  fetchAdminNotificationTemplates,
+  saveBanner,
+  saveMainCategory,
+  saveNotificationTemplate,
+} from '@/services/homeContent';
 import {
   adminCreateUser,
   fetchAdminBids,
@@ -79,7 +86,11 @@ export default function AdminScreen() {
         fetchAdminRewards(),
         fetchAdminRewardClaims(),
       ]);
-      const [bannerRows, categoryRows] = await Promise.all([fetchAdminBanners(), fetchAdminMainCategories()]);
+      const [bannerRows, categoryRows, templateRows] = await Promise.all([
+        fetchAdminBanners(),
+        fetchAdminMainCategories(),
+        fetchAdminNotificationTemplates(),
+      ]);
       if (categoryRows?.length) replaceCatalogMains(categoryRows);
       setStats(nextStats);
       setStores((prev) => {
@@ -99,6 +110,7 @@ export default function AdminScreen() {
         if (rewardItems) next['quests-rewards'] = rewardItems;
         if (rewardClaims) next['quests-history'] = rewardClaims;
         if (bannerRows) next['extras-banners'] = bannerRows;
+        if (templateRows) next['notifications-templates'] = templateRows;
         return next;
       });
     } catch (err) {
@@ -124,6 +136,34 @@ export default function AdminScreen() {
   const commit = async (action, row) => {
     const target = findAdminPage(pageId);
     setError('');
+    if (pageId === 'notifications-templates') {
+      try {
+        await saveNotificationTemplate(action, row);
+        const fresh = await fetchAdminNotificationTemplates();
+        if (fresh) setStores((prev) => ({ ...prev, 'notifications-templates': fresh }));
+      } catch (err) {
+        const message = err.message || 'Không lưu được mẫu thông báo.';
+        const offline = /migrate_home_feed|chưa có mẫu/i.test(message);
+        if (offline) {
+          setStores((prev) => {
+            const list = prev['notifications-templates'] || [];
+            if (action === 'delete') {
+              return { ...prev, 'notifications-templates': list.filter((item) => item.id !== row.id) };
+            }
+            if (action === 'create') {
+              return { ...prev, 'notifications-templates': [{ ...row, id: `tip-${Date.now()}` }, ...list] };
+            }
+            return {
+              ...prev,
+              'notifications-templates': list.map((item) => (item.id === row.id ? { ...item, ...row } : item)),
+            };
+          });
+        }
+        setError(message);
+        if (!offline) throw err;
+      }
+      return;
+    }
     if (pageId === 'extras-banners') {
       try {
         await saveBanner(action, row);
