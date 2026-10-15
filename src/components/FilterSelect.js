@@ -10,15 +10,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Colors, Radius } from '@/constants/colors';
 
-export function FilterSelect({ label, value, options, onChange }) {
+export function FilterSelect({ label, value, options, onChange, compact = false }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((item) => item.id === value);
 
   return (
     <>
-      <Pressable style={styles.chip} onPress={() => setOpen(true)}>
+      <Pressable style={[styles.chip, compact && styles.chipCompact]} onPress={() => setOpen(true)}>
         {label ? <Text style={styles.chipLabel}>{label}</Text> : null}
-        <Text style={styles.chipValue} numberOfLines={1}>
+        <Text style={[styles.chipValue, compact && styles.chipValueCompact]} numberOfLines={1}>
           {selected?.name ?? 'Tất cả'}
         </Text>
         <Ionicons name="chevron-down" size={14} color={Colors.primary} />
@@ -77,12 +77,24 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '600',
   },
+  chipCompact: {
+    minWidth: 0,
+    flexShrink: 0,
+    paddingHorizontal: 10,
+  },
   chipValue: {
     flex: 1,
     textAlign: 'right',
     fontSize: 13,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  chipValueCompact: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    maxWidth: 108,
+    textAlign: 'left',
   },
   overlay: {
     flex: 1,

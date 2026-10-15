@@ -78,6 +78,8 @@ export function mapWorkerProfile(profile, extras = {}) {
     idVerified: Boolean(
       extras.idVerified ?? profile?.idVerified ?? profile?.id_verified
     ),
+    latitude: profile?.latitude == null || profile.latitude === '' ? null : Number(profile.latitude),
+    longitude: profile?.longitude == null || profile.longitude === '' ? null : Number(profile.longitude),
   };
 }
 

@@ -19,6 +19,7 @@ import BidCard from '@/components/BidCard';
 import UserIdentityCard from '@/components/UserIdentityCard';
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { useJobs } from '@/context/JobsContext';
+import { useLocation } from '@/context/LocationContext';
 import { useUnread } from '@/context/UnreadContext';
 import { getCategoryById } from '@/data/categories';
 import {
@@ -34,11 +35,13 @@ import {
 } from '@/data/jobs';
 import { formatArea } from '@/data/locations';
 import { getOrCreateConversation } from '@/services/chat';
+import { formatAway, jobPoint, roadDistanceKm } from '@/services/geo';
 import { recordRewardAction } from '@/services/rewards';
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams();
   const { getJobById, addQuote, loadJob, trackJobView, profile, loading, closeJob } = useJobs();
+  const { point, status, ensureLocation } = useLocation();
   const { markJobBidsSeen } = useUnread();
   const job = getJobById(id);
   const jobId = job?.id;
@@ -51,6 +54,8 @@ export default function JobDetailScreen() {
   const [sending, setSending] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [roadKm, setRoadKm] = useState(null);
+  const [roadKey, setRoadKey] = useState('');
 
   async function shareJob() {
     try {
@@ -71,6 +76,36 @@ export default function JobDetailScreen() {
     if (!job?.id) return;
     trackJobView(job.id).catch(() => {});
   }, [job?.id, profile?.id, trackJobView]);
+
+  const isOwner = Boolean(profileId && jobOwnerId && jobOwnerId === profileId);
+  const target = !isOwner && job ? jobPoint(job) : null;
+  const roadPair =
+    point && target ? `${point.latitude},${point.longitude}|${target.latitude},${target.longitude}` : '';
+  if (roadPair !== roadKey) {
+    setRoadKey(roadPair);
+    setRoadKm(null);
+  }
+  const awayLabel = roadKm == null ? '' : formatAway(roadKm);
+
+  useEffect(() => {
+    if (!roadPair) return undefined;
+    const [fromRaw, toRaw] = roadPair.split('|');
+    const [lat1, lng1] = fromRaw.split(',').map(Number);
+    const [lat2, lng2] = toRaw.split(',').map(Number);
+    if (![lat1, lng1, lat2, lng2].every((value) => Number.isFinite(value))) return undefined;
+    let cancelled = false;
+    roadDistanceKm(
+      { latitude: lat1, longitude: lng1 },
+      { latitude: lat2, longitude: lng2 }
+    )
+      .then((km) => {
+        if (!cancelled) setRoadKm(km);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [roadPair]);
 
   useFocusEffect(
     useCallback(() => {
@@ -106,7 +141,6 @@ export default function JobDetailScreen() {
   const isCompleted = flowStatus === JOB_STATUS.COMPLETED;
   const isCancelled = flowStatus === JOB_STATUS.CLOSED;
   const questions = job.questions ?? 0;
-  const isOwner = Boolean(profile?.id && job.userId === profile.id);
   const alreadyBid = Boolean(
     profile?.id && (job.quotes || []).some((quote) => quote.workerId === profile.id)
   );
@@ -284,7 +318,25 @@ export default function JobDetailScreen() {
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Ionicons name="location-outline" size={18} color={Colors.primary} />
-            <Text style={styles.infoText}>{formatArea(job.provinceId, job.wardId)}</Text>
+            <View style={styles.flex}>
+              <Text style={styles.infoText}>{formatArea(job.provinceId, job.wardId)}</Text>
+              {!isOwner && awayLabel ? <Text style={styles.away}>{awayLabel}</Text> : null}
+              {!isOwner && !awayLabel && !point ? (
+                <Pressable onPress={() => ensureLocation()}>
+                  <Text style={styles.awayMuted}>
+                    {status === 'denied' || status === 'off'
+                      ? 'Bật vị trí để biết cách bạn bao xa.'
+                      : 'Đang tính khoảng cách...'}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {!isOwner && !awayLabel && point && !target ? (
+                <Text style={styles.awayMuted}>Tin này chưa có vị trí trên bản đồ.</Text>
+              ) : null}
+              {!isOwner && !awayLabel && point && target ? (
+                <Text style={styles.awayMuted}>Đang tính khoảng cách...</Text>
+              ) : null}
+            </View>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
@@ -363,6 +415,7 @@ export default function JobDetailScreen() {
         <Pressable style={styles.overlay} onPress={() => setQuoteOpen(false)}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             <Text style={styles.sheetTitle}>Gửi đề xuất</Text>
+            {awayLabel ? <Text style={styles.away}>{awayLabel}</Text> : null}
             <Text style={styles.feeHint}>Phí gửi đề xuất: {formatPrice(BID_FEE)} (trừ vào ví)</Text>
             <TextInput
               style={styles.input}
@@ -571,6 +624,20 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 14,
     lineHeight: 20,
+  },
+  flex: {
+    flex: 1,
+  },
+  away: {
+    marginTop: 2,
+    color: Colors.primary,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  awayMuted: {
+    marginTop: 2,
+    color: Colors.textMuted,
+    fontSize: 13,
   },
   section: {
     marginTop: 22,

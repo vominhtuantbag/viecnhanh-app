@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,42 +18,38 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 
 import { BottomSheet, SheetFooter } from '@/components/BottomSheet';
+import { RangeSlider } from '@/components/RangeSlider';
 import { TaskCard } from '@/components/TaskCard';
 import { Colors, Radius } from '@/constants/colors';
 import { useJobs } from '@/context/JobsContext';
+import { useLocation } from '@/context/LocationContext';
 import { getCategoryById } from '@/data/categories';
 import { useCatalog, visibleMains } from '@/data/catalog';
-import { isJobLive } from '@/data/jobs';
-import { getProvinceById, getVisibleProvinces, sameProvince } from '@/data/locations';
+import { JOB_STATUS, jobFlowStatus } from '@/data/jobs';
+import { getProvinceById, getVisibleProvinces, getWardById, sameProvince } from '@/data/locations';
+import { haversineKm, jobPoint } from '@/services/geo';
 
 const SORT_OPTIONS = [
   { id: 'newest', name: 'Mới nhất' },
-  { id: 'recommended', name: 'Được đề xuất' },
-  { id: 'near', name: 'Gần tôi nhất' },
+  { id: 'oldest', name: 'Cũ nhất' },
   { id: 'price', name: 'Giá cao nhất' },
+  { id: 'priceLow', name: 'Giá thấp nhất' },
+  { id: 'near', name: 'Gần tôi nhất' },
+  { id: 'recommended', name: 'Được đề xuất' },
 ];
 
-const DISTANCE_OPTIONS = [
-  { id: 'all', name: 'Mọi khoảng cách' },
-  { id: '5', name: '5 km' },
-  { id: '10', name: '10 km' },
-  { id: '25', name: '25 km' },
-];
-
-const PRICE_OPTIONS = [
-  { id: 'all', name: 'Mọi mức giá' },
-  { id: '300', name: 'Dưới 300.000 đ' },
-  { id: '500', name: 'Dưới 500.000 đ' },
-  { id: '1000', name: 'Dưới 1.000.000 đ' },
-];
+const PRICE_MAX = 5000000;
+const DISTANCE_MAX = 50;
 
 const DEFAULTS = {
   sort: 'newest',
   categoryId: 'all',
   provinceId: 'all',
-  radius: 'all',
-  price: 'all',
-  availableOnly: false,
+  wardId: '',
+  distance: DISTANCE_MAX,
+  priceMin: 0,
+  priceMax: PRICE_MAX,
+  openOnly: true,
   noOffersOnly: false,
 };
 
@@ -61,10 +58,13 @@ export default function BrowseScreen() {
   const provinces = getVisibleProvinces();
   const categoryChoices = visibleMains(catalog).map((item) => ({ id: item.id, name: item.name }));
   const { jobs, loading, error, refreshJobs, markBrowseSeen, markBrowseBlurred } = useJobs();
+  const { point } = useLocation();
   const [filters, setFilters] = useState(DEFAULTS);
   const [draft, setDraft] = useState(DEFAULTS);
   const [sheet, setSheet] = useState(null);
   const [categoryQuery, setCategoryQuery] = useState('');
+  const [areaQuery, setAreaQuery] = useState('');
+  const [areaMenu, setAreaMenu] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +76,8 @@ export default function BrowseScreen() {
   function openSheet(name) {
     setDraft(filters);
     setCategoryQuery('');
+    setAreaQuery('');
+    setAreaMenu(null);
     setSheet(name);
   }
 
@@ -91,16 +93,24 @@ export default function BrowseScreen() {
       setDraft((current) => ({
         ...current,
         provinceId: DEFAULTS.provinceId,
-        radius: DEFAULTS.radius,
-        price: DEFAULTS.price,
-        availableOnly: false,
-        noOffersOnly: false,
+        wardId: DEFAULTS.wardId,
+        distance: DEFAULTS.distance,
+        priceMin: DEFAULTS.priceMin,
+        priceMax: DEFAULTS.priceMax,
+        openOnly: DEFAULTS.openOnly,
+        noOffersOnly: DEFAULTS.noOffersOnly,
       }));
+      setAreaMenu(null);
+      setAreaQuery('');
     }
   }
 
   const filteredJobs = useMemo(() => {
-    const next = jobs.filter((job) => {
+    const measured = jobs.map((job) => {
+      const km = point ? haversineKm(point, jobPoint(job)) : null;
+      return { ...job, distanceKm: km ?? job.distanceKm ?? 0, distanceKnown: km != null };
+    });
+    const next = measured.filter((job) => {
       if (
         filters.categoryId !== 'all' &&
         job.categoryId !== filters.categoryId &&
@@ -109,39 +119,39 @@ export default function BrowseScreen() {
         return false;
       }
       if (filters.provinceId !== 'all' && !sameProvince(job.provinceId, filters.provinceId)) return false;
-      if (filters.radius !== 'all' && job.distanceKm > Number(filters.radius)) return false;
-      if (filters.price !== 'all' && job.price > Number(filters.price) * 1000) return false;
-      if (!isJobLive(job)) return false;
-      if (filters.availableOnly && !isJobLive(job)) return false;
+      if (filters.wardId && job.wardId !== filters.wardId) return false;
+      if (point && filters.distance < DISTANCE_MAX && (!job.distanceKnown || job.distanceKm > filters.distance)) {
+        return false;
+      }
+      if (job.price < filters.priceMin) return false;
+      if (filters.priceMax < PRICE_MAX && job.price > filters.priceMax) return false;
+      const flow = jobFlowStatus(job);
+      if (filters.openOnly && flow !== JOB_STATUS.APPROVED) return false;
+      if (!filters.openOnly && flow !== JOB_STATUS.APPROVED && flow !== JOB_STATUS.ASSIGNED) return false;
       if (filters.noOffersOnly && (job.quotes?.length ?? 0) > 0) return false;
       return true;
     });
 
     next.sort((a, b) => {
       if (filters.sort === 'price') return b.price - a.price;
-      if (filters.sort === 'near') return a.distanceKm - b.distanceKm;
+      if (filters.sort === 'priceLow') return a.price - b.price;
+      if (filters.sort === 'oldest') return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      if (filters.sort === 'near') {
+        return (a.distanceKnown ? a.distanceKm : 99999) - (b.distanceKnown ? b.distanceKm : 99999);
+      }
       if (filters.sort === 'recommended') return b.views - a.views;
       return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     });
 
     return next;
-  }, [jobs, filters, catalog]);
+  }, [jobs, filters, point]);
 
-  const province = getProvinceById(filters.provinceId);
-  const cityName = shortCity(province?.name);
-  const distanceChip =
-    filters.radius === 'all' && filters.provinceId === 'all'
-      ? 'Mọi khu vực'
-      : filters.radius === 'all'
-        ? cityName
-        : filters.provinceId === 'all'
-          ? `${filters.radius}km`
-          : `${filters.radius}km tại ${cityName}`;
-  const sortName = SORT_OPTIONS.find((item) => item.id === filters.sort)?.name;
+  const sortName = SORT_OPTIONS.find((item) => item.id === filters.sort)?.name ?? 'Mới nhất';
   const categoryName =
     filters.categoryId === 'all'
-      ? 'Tất cả'
-      : categoryChoices.find((item) => item.id === filters.categoryId)?.name;
+      ? 'Danh mục'
+      : categoryChoices.find((item) => item.id === filters.categoryId)?.name ?? 'Danh mục';
+  const detailsOn = hasDetails(filters);
 
   const categoryResults = categoryChoices.filter((item) =>
     item.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())
@@ -155,16 +165,17 @@ export default function BrowseScreen() {
       </View>
 
       <View style={styles.filterBar}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterScroll}
-          contentContainerStyle={styles.filters}>
-          <Chip label="Sắp xếp" value={sortName} onPress={() => openSheet('sort')} />
-          <Chip label="Danh mục" value={categoryName} onPress={() => openSheet('category')} />
-          <Chip label="Khu vực" value={distanceChip} onPress={() => openSheet('more')} />
-        </ScrollView>
+        <Chip
+          label={sortName}
+          active={filters.sort !== 'newest'}
+          onPress={() => openSheet('sort')}
+        />
+        <Chip
+          label={categoryName}
+          active={filters.categoryId !== 'all'}
+          onPress={() => openSheet('category')}
+        />
+        <Chip label="Chi tiết" active={detailsOn} onPress={() => openSheet('more')} />
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -236,79 +247,203 @@ export default function BrowseScreen() {
 
       <BottomSheet
         visible={sheet === 'more'}
-        title="Bộ lọc"
+        title="Chi tiết"
         onClose={() => setSheet(null)}
         footer={<SheetFooter onReset={resetDraft} onApply={applyDraft} />}>
-        <Text style={styles.group}>Địa điểm</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
-          <Pressable
-            style={[styles.pill, draft.provinceId === 'all' && styles.pillActive]}
-            onPress={() => setDraft((current) => ({ ...current, provinceId: 'all' }))}>
-            <Text style={[styles.pillText, draft.provinceId === 'all' && styles.pillTextActive]}>
-              Tất cả
-            </Text>
-          </Pressable>
-          {provinces.map((item) => (
-            <Pressable
-              key={item.id}
-              style={[styles.pill, draft.provinceId === item.id && styles.pillActive]}
-              onPress={() => setDraft((current) => ({ ...current, provinceId: item.id }))}>
-              <Text style={[styles.pillText, draft.provinceId === item.id && styles.pillTextActive]}>
-                {shortCity(item.name)}
-              </Text>
-            </Pressable>
-          ))}
+        <ScrollView
+          style={styles.detailScroll}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <Text style={styles.group}>Khu vực</Text>
+          <AreaField
+            label="Tỉnh / Thành phố"
+            value={draft.provinceId === 'all' ? 'Tất cả' : getProvinceById(draft.provinceId)?.name || 'Tất cả'}
+            open={areaMenu === 'province'}
+            onPress={() => {
+              setAreaQuery('');
+              setAreaMenu((current) => (current === 'province' ? null : 'province'));
+            }}
+          />
+          {areaMenu === 'province' ? (
+            <AreaList
+              query={areaQuery}
+              onQuery={setAreaQuery}
+              options={[{ id: 'all', name: 'Tất cả' }, ...provinces.map((item) => ({ id: item.id, name: item.name }))]}
+              selected={draft.provinceId}
+              onSelect={(id) => {
+                setDraft((current) => ({ ...current, provinceId: id, wardId: '' }));
+                setAreaMenu(null);
+              }}
+            />
+          ) : null}
+          <AreaField
+            label="Xã / Phường"
+            value={
+              draft.provinceId === 'all'
+                ? 'Chọn tỉnh trước'
+                : getWardById(draft.provinceId, draft.wardId)?.name || 'Tất cả'
+            }
+            disabled={draft.provinceId === 'all'}
+            open={areaMenu === 'ward'}
+            onPress={() => {
+              setAreaQuery('');
+              setAreaMenu((current) => (current === 'ward' ? null : 'ward'));
+            }}
+          />
+          {areaMenu === 'ward' && draft.provinceId !== 'all' ? (
+            <AreaList
+              query={areaQuery}
+              onQuery={setAreaQuery}
+              options={[
+                { id: '', name: 'Tất cả' },
+                ...(provinces.find((item) => item.id === draft.provinceId)?.wards ?? []).map((item) => ({
+                  id: item.id,
+                  name: item.name,
+                })),
+              ]}
+              selected={draft.wardId}
+              onSelect={(id) => {
+                setDraft((current) => ({ ...current, wardId: id }));
+                setAreaMenu(null);
+              }}
+            />
+          ) : null}
+
+          <Text style={styles.group}>Khoảng cách</Text>
+          <Text style={styles.sliderValue}>{distanceLabel(draft.distance)}</Text>
+          {point ? null : (
+            <Text style={styles.hint}>Bật vị trí để lọc việc gần bạn. Chưa có vị trí thì mục này chưa áp dụng.</Text>
+          )}
+          <RangeSlider
+            single
+            min={1}
+            max={DISTANCE_MAX}
+            step={1}
+            low={1}
+            high={draft.distance}
+            onChange={(_low, next) => setDraft((current) => ({ ...current, distance: next }))}
+          />
+          <View style={styles.scale}>
+            <Text style={styles.scaleText}>1 km</Text>
+            <Text style={styles.scaleText}>50 km</Text>
+          </View>
+
+          <Text style={styles.group}>Mức giá</Text>
+          <Text style={styles.sliderValue}>{priceLabel(draft.priceMin, draft.priceMax)}</Text>
+          <RangeSlider
+            min={0}
+            max={PRICE_MAX}
+            step={100000}
+            low={draft.priceMin}
+            high={draft.priceMax}
+            onChange={(nextLow, nextHigh) =>
+              setDraft((current) => ({ ...current, priceMin: nextLow, priceMax: nextHigh }))
+            }
+          />
+          <View style={styles.scale}>
+            <Text style={styles.scaleText}>0 đ</Text>
+            <Text style={styles.scaleText}>5 triệu</Text>
+          </View>
+
+          <ToggleRow
+            label="Tin đang mở"
+            value={draft.openOnly}
+            onValueChange={(value) => setDraft((current) => ({ ...current, openOnly: value }))}
+          />
+          <ToggleRow
+            label="Tin chưa có báo giá"
+            value={draft.noOffersOnly}
+            onValueChange={(value) => setDraft((current) => ({ ...current, noOffersOnly: value }))}
+          />
         </ScrollView>
-
-        <Text style={styles.group}>Khoảng cách</Text>
-        {DISTANCE_OPTIONS.map((item) => (
-          <OptionRow
-            key={item.id}
-            label={item.name}
-            selected={draft.radius === item.id}
-            onPress={() => setDraft((current) => ({ ...current, radius: item.id }))}
-          />
-        ))}
-
-        <Text style={styles.group}>Mức giá</Text>
-        {PRICE_OPTIONS.map((item) => (
-          <OptionRow
-            key={item.id}
-            label={item.name}
-            selected={draft.price === item.id}
-            onPress={() => setDraft((current) => ({ ...current, price: item.id }))}
-          />
-        ))}
-
-        <ToggleRow
-          label="Chỉ hiển thị công việc còn nhận"
-          value={draft.availableOnly}
-          onValueChange={(value) => setDraft((current) => ({ ...current, availableOnly: value }))}
-        />
-        <ToggleRow
-          label="Hiển thị công việc chưa có đề xuất"
-          value={draft.noOffersOnly}
-          onValueChange={(value) => setDraft((current) => ({ ...current, noOffersOnly: value }))}
-        />
       </BottomSheet>
     </SafeAreaView>
   );
 }
 
-function shortCity(name = '') {
-  if (name.includes('Hồ Chí Minh')) return 'TPHCM';
-  return name;
+function hasDetails(filters) {
+  return (
+    filters.provinceId !== 'all' ||
+    Boolean(filters.wardId) ||
+    filters.distance < DISTANCE_MAX ||
+    filters.priceMin > 0 ||
+    filters.priceMax < PRICE_MAX ||
+    !filters.openOnly ||
+    filters.noOffersOnly
+  );
 }
 
-function Chip({ label, value, onPress }) {
+function distanceLabel(km) {
+  if (km >= DISTANCE_MAX) return 'Không giới hạn';
+  return `Trong ${km} km`;
+}
+
+function priceLabel(min, max) {
+  if (min <= 0 && max >= PRICE_MAX) return 'Mọi mức giá';
+  const ceiling = max >= PRICE_MAX ? '5 triệu trở lên' : formatMoney(max);
+  if (min <= 0) return `Đến ${ceiling}`;
+  return `${formatMoney(min)} – ${ceiling}`;
+}
+
+function formatMoney(value) {
+  if (value >= 1000000) {
+    const millions = value / 1000000;
+    const text = Number.isInteger(millions) ? String(millions) : millions.toFixed(1);
+    return `${text} triệu`;
+  }
+  return `${Number(value).toLocaleString('vi-VN')} đ`;
+}
+
+function Chip({ label, active, onPress }) {
   return (
-    <Pressable style={styles.chip} onPress={onPress}>
-      <Text style={styles.chipLabel}>{label}</Text>
-      <Text style={styles.chipValue} numberOfLines={1}>
-        {value}
+    <Pressable style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
+      <Text style={[styles.chipValue, active && styles.chipValueActive]} numberOfLines={1}>
+        {label}
       </Text>
-      <Ionicons name="chevron-down" size={14} color={Colors.primary} />
+      <Ionicons name="chevron-down" size={14} color={active ? Colors.primary : Colors.textMuted} />
     </Pressable>
+  );
+}
+
+function AreaField({ label, value, open, disabled, onPress }) {
+  return (
+    <Pressable
+      style={[styles.areaField, disabled && styles.areaDisabled, open && styles.areaOpen]}
+      onPress={onPress}
+      disabled={disabled}>
+      <View style={styles.areaCopy}>
+        <Text style={styles.areaLabel}>{label}</Text>
+        <Text style={styles.areaValue} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+      <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textMuted} />
+    </Pressable>
+  );
+}
+
+function AreaList({ query, onQuery, options, selected, onSelect }) {
+  const text = query.trim().toLowerCase();
+  const rows = text ? options.filter((item) => item.name.toLowerCase().includes(text)) : options;
+  return (
+    <View style={styles.areaList}>
+      <TextInput
+        style={styles.areaSearch}
+        placeholder="Tìm tên"
+        placeholderTextColor={Colors.textLight}
+        value={query}
+        onChangeText={onQuery}
+      />
+      <ScrollView style={styles.areaScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+        {rows.map((item) => (
+          <Pressable key={item.id || 'all-ward'} style={styles.option} onPress={() => onSelect(item.id)}>
+            <Text style={[styles.optionText, selected === item.id && styles.optionActive]}>{item.name}</Text>
+            {selected === item.id ? <Ionicons name="checkmark" size={18} color={Colors.primary} /> : null}
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -357,41 +492,41 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   filterBar: {
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  filterScroll: {
-    flexGrow: 0,
-  },
-  filters: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
     gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 10,
+    backgroundColor: Colors.background,
+    zIndex: 10,
+    ...(Platform.OS === 'web' ? { position: 'sticky', top: 0 } : null),
   },
   chip: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'center',
-    height: 36,
-    gap: 6,
+    justifyContent: 'center',
+    height: 38,
+    gap: 4,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    maxWidth: 220,
+    paddingHorizontal: 10,
   },
-  chipLabel: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
+  chipActive: {
+    backgroundColor: Colors.primarySoft,
+    borderColor: Colors.primary,
   },
   chipValue: {
     flexShrink: 1,
     fontSize: 13,
     fontWeight: '700',
+    color: Colors.text,
+  },
+  chipValueActive: {
     color: Colors.primary,
   },
   error: {
@@ -456,6 +591,9 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
   },
+  detailScroll: {
+    maxHeight: 380,
+  },
   group: {
     marginTop: 14,
     marginBottom: 8,
@@ -463,27 +601,74 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
-  pills: {
-    gap: 8,
-    paddingBottom: 4,
-  },
-  pill: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  pillActive: {
-    backgroundColor: Colors.primarySoft,
-    borderColor: Colors.primary,
-  },
-  pillText: {
+  sliderValue: {
+    fontSize: 13,
     fontWeight: '700',
+    color: Colors.primary,
+  },
+  hint: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 18,
     color: Colors.textMuted,
   },
-  pillTextActive: {
-    color: Colors.primary,
+  scale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  scaleText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  areaField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    backgroundColor: Colors.surface,
+  },
+  areaOpen: {
+    borderColor: Colors.primary,
+  },
+  areaDisabled: {
+    opacity: 0.5,
+  },
+  areaCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  areaLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  areaValue: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  areaList: {
+    marginTop: -4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.background,
+  },
+  areaSearch: {
+    height: 40,
+    color: Colors.text,
+  },
+  areaScroll: {
+    maxHeight: 160,
   },
   toggleRow: {
     flexDirection: 'row',

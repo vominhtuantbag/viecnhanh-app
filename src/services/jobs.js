@@ -230,6 +230,8 @@ export function createLocalJob(profileId, payload, { autoApprove = true } = {}) 
       minute: '2-digit',
     }),
     distanceKm: 0,
+    latitude: Number(payload.latitude) || null,
+    longitude: Number(payload.longitude) || null,
     categoryId: payload.categoryId || '',
     isMine: true,
     questions: 0,
@@ -266,6 +268,8 @@ export function mapJob(row, profileId) {
       ? createdAt.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
       : 'Linh hoạt',
     distanceKm: 0,
+    latitude: row.latitude == null || row.latitude === '' ? null : Number(row.latitude),
+    longitude: row.longitude == null || row.longitude === '' ? null : Number(row.longitude),
     categoryId: row.category_id || '',
     isMine: Boolean(profileId && row.user_id === profileId),
     questions: 0,
@@ -329,24 +333,35 @@ export async function createJobRecord(profileId, payload, existingJobs = []) {
     autoApprove = false;
   }
 
-  return unwrap(
-    await supabase
-      .from('jobs')
-      .insert({
-        user_id: profileId,
-        title: payload.title.trim(),
-        description: payload.description.trim(),
-        price: Number(payload.price) || 0,
-        province_id: payload.provinceId,
-        ward_id: payload.wardId,
-        category_id: payload.categoryId || null,
-        status: autoApprove ? 'approved' : 'pending',
-        is_approved: autoApprove,
-        views_count: 0,
-      })
-      .select(JOB_SELECT)
-      .single()
-  );
+  const row = {
+    user_id: profileId,
+    title: payload.title.trim(),
+    description: payload.description.trim(),
+    price: Number(payload.price) || 0,
+    province_id: payload.provinceId,
+    ward_id: payload.wardId,
+    category_id: payload.categoryId || null,
+    status: autoApprove ? 'approved' : 'pending',
+    is_approved: autoApprove,
+    views_count: 0,
+  };
+  if (payload.latitude != null && payload.longitude != null && payload.latitude !== '' && payload.longitude !== '') {
+    const latitude = Number(payload.latitude);
+    const longitude = Number(payload.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      row.latitude = latitude;
+      row.longitude = longitude;
+    }
+  }
+
+  const inserted = await supabase.from('jobs').insert(row).select(JOB_SELECT).single();
+  if (!inserted.error) return inserted.data;
+  if (row.latitude != null && /latitude|longitude|42703/i.test(inserted.error.message || '')) {
+    delete row.latitude;
+    delete row.longitude;
+    return unwrap(await supabase.from('jobs').insert(row).select(JOB_SELECT).single());
+  }
+  return unwrap(inserted);
 }
 
 export async function recordUniqueJobView(jobId, { viewerId, ownerId } = {}) {

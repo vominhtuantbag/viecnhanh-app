@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { Colors } from '@/constants/colors';
 import { AuthProvider } from '@/context/AuthContext';
+import { LocationProvider } from '@/context/LocationContext';
 import { hydrateCatalog } from '@/data/catalog';
 import { JobsProvider } from '@/context/JobsContext';
 import { PushProvider } from '@/context/PushContext';
@@ -36,6 +37,7 @@ export default function RootLayout() {
   }, []);
   return (
     <AuthProvider>
+      <LocationProvider>
       <PushProvider>
         <UnreadProvider>
           <JobsProvider>
@@ -65,6 +67,7 @@ export default function RootLayout() {
           </JobsProvider>
         </UnreadProvider>
       </PushProvider>
+      </LocationProvider>
     </AuthProvider>
   );
 }

@@ -47,6 +47,12 @@
       "expo-apple-authentication",
       "expo-web-browser",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Việc Nhanh cần vị trí để điền khu vực khi bạn đăng việc và tính khoảng cách cho thợ."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "color": "#0052FF",

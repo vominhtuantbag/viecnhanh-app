@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CountBadge } from '@/components/CountBadge';
@@ -148,27 +148,39 @@ export default function MyTasksScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Text style={styles.title}>Việc của tôi</Text>
-      <View style={styles.tabs}>
-        {TABS.map((item) => {
-          const active = item.id === tab;
-          return (
-            <Pressable
-              key={item.id}
-              onPress={() => setTab(item.id)}
-              style={[styles.tab, active && styles.tabActive]}>
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>{item.label}</Text>
-              {item.id === 'posted' ? <CountBadge count={bidUnreadTotal} /> : null}
-            </Pressable>
-          );
-        })}
-      </View>
-      <View style={styles.filterRow}>
-        <FilterSelect
-          label="Lọc"
-          value={filterValue}
-          options={FILTERS[tab]}
-          onChange={(next) => setFilters((current) => ({ ...current, [tab]: next }))}
-        />
+      <View style={styles.toolbar}>
+        <View style={styles.tabsSlot}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabsScroll}
+            contentContainerStyle={styles.tabs}>
+            {TABS.map((item) => {
+              const active = item.id === tab;
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setTab(item.id)}
+                  style={[styles.tab, active && styles.tabActive]}>
+                  <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
+                    {item.label}
+                  </Text>
+                  {item.id === 'posted' ? <CountBadge count={bidUnreadTotal} /> : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+        <View style={styles.filterSlot}>
+          <FilterSelect
+            compact
+            label="Lọc"
+            value={filterValue}
+            options={FILTERS[tab]}
+            onChange={(next) => setFilters((current) => ({ ...current, [tab]: next }))}
+          />
+        </View>
       </View>
       <FlatList
         data={data}
@@ -193,23 +205,52 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   title: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     paddingTop: 8,
     fontSize: 28,
     fontWeight: '800',
     color: Colors.text,
   },
-  tabs: {
+  toolbar: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: Colors.background,
+    zIndex: 10,
+    ...(Platform.OS === 'web'
+      ? {
+          position: 'sticky',
+          top: 0,
+        }
+      : null),
   },
-  tab: {
+  tabsSlot: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+  },
+  tabsScroll: {
+    flexGrow: 1,
+  },
+  filterSlot: {
+    flexShrink: 0,
+  },
+  tabs: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
+    paddingRight: 4,
+  },
+  tab: {
+    flexDirection: 'row',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: Radius.full,
     backgroundColor: Colors.surface,
@@ -223,14 +264,6 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: '#FFFFFF',
-  },
-  filterRow: {
-    minHeight: 44,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
   },
   list: {
     paddingHorizontal: 20,
