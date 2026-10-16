@@ -415,6 +415,7 @@ set search_path = public
 as $$
 declare
   v_skills integer := 0;
+  v_verified boolean := false;
 begin
   if exists (
     select 1 from information_schema.columns
@@ -424,9 +425,17 @@ begin
       into v_skills using new.id;
   end if;
 
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'id_verified'
+  ) then
+    execute 'select coalesce(id_verified, false) from public.profiles where id = $1'
+      into v_verified using new.id;
+  end if;
+
   if coalesce(new.full_name, '') <> ''
      and coalesce(new.phone, '') <> ''
-     and (coalesce(new.id_verified, false) or v_skills > 0) then
+     and (v_verified or v_skills > 0) then
     perform public.bump_reward_progress(new.id, 'complete_profile', 1);
   end if;
   return new;

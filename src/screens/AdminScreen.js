@@ -23,9 +23,12 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
 import { findAdminPage, mergeLiveAdminData, replaceAdminUsers, seedAdminStores } from '@/data/adminMenu';
 import {
+  fetchAdminMysteryPrizes,
   fetchAdminRewardClaims,
   fetchAdminRewardTasks,
   fetchAdminRewards,
+  fetchAdminWheelPrizes,
+  activePrizeTotal,
   saveRewardAdmin,
 } from '@/services/rewards';
 import { applyCatalogAdmin, catalogRows, replaceCatalogMains, useCatalog, withCatalogFields } from '@/data/catalog';
@@ -67,14 +70,20 @@ export default function AdminScreen() {
   const liveReady = useRef(false);
 
   const catalog = useCatalog();
-  const page = withCatalogFields(findAdminPage(pageId), catalog);
+  const basePage = withCatalogFields(findAdminPage(pageId), catalog);
+  const page = basePage?.live === 'wheel-prizes' || basePage?.live === 'mystery-prizes'
+    ? {
+        ...basePage,
+        hint: `${basePage.hint} Tổng các giải đang hiện: ${activePrizeTotal(stores[pageId] || [])}%.`,
+      }
+    : basePage;
   const catalogList = catalogRows(pageId, catalog);
 
   const load = useCallback(async () => {
     if (!profile?.is_admin) return;
     setError('');
     try {
-      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats, rewardTasks, rewardItems, rewardClaims] = await Promise.all([
+      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats, rewardTasks, rewardItems, rewardClaims, wheelPrizes, mysteryPrizes] = await Promise.all([
         fetchAdminStats(),
         fetchAdminJobs(),
         fetchAdminUsers(),
@@ -85,6 +94,8 @@ export default function AdminScreen() {
         fetchAdminRewardTasks(),
         fetchAdminRewards(),
         fetchAdminRewardClaims(),
+        fetchAdminWheelPrizes(),
+        fetchAdminMysteryPrizes(),
       ]);
       const [bannerRows, categoryRows, templateRows] = await Promise.all([
         fetchAdminBanners(),
@@ -109,6 +120,8 @@ export default function AdminScreen() {
         if (rewardTasks) next['quests-tasks'] = rewardTasks;
         if (rewardItems) next['quests-rewards'] = rewardItems;
         if (rewardClaims) next['quests-history'] = rewardClaims;
+        if (wheelPrizes) next['quests-wheel'] = wheelPrizes;
+        if (mysteryPrizes) next['quests-mystery'] = mysteryPrizes;
         if (bannerRows) next['extras-banners'] = bannerRows;
         if (templateRows) next['notifications-templates'] = templateRows;
         return next;
@@ -210,19 +223,23 @@ export default function AdminScreen() {
       }
       return;
     }
-    if (target.live === 'reward-tasks' || target.live === 'rewards' || target.live === 'reward-claims') {
+    if (target.live === 'reward-tasks' || target.live === 'rewards' || target.live === 'reward-claims' || target.live === 'wheel-prizes' || target.live === 'mystery-prizes') {
       try {
         await saveRewardAdmin(target.live, action, row);
-        const [rewardTasks, rewardItems, rewardClaims] = await Promise.all([
+        const [rewardTasks, rewardItems, rewardClaims, wheelPrizes, mysteryPrizes] = await Promise.all([
           fetchAdminRewardTasks(),
           fetchAdminRewards(),
           fetchAdminRewardClaims(),
+          fetchAdminWheelPrizes(),
+          fetchAdminMysteryPrizes(),
         ]);
         setStores((prev) => {
           const next = { ...prev };
           if (rewardTasks) next['quests-tasks'] = rewardTasks;
           if (rewardItems) next['quests-rewards'] = rewardItems;
           if (rewardClaims) next['quests-history'] = rewardClaims;
+          if (wheelPrizes) next['quests-wheel'] = wheelPrizes;
+          if (mysteryPrizes) next['quests-mystery'] = mysteryPrizes;
           return next;
         });
       } catch (err) {
