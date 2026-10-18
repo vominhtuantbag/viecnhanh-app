@@ -140,6 +140,23 @@ function bestWard(wards, address) {
   return winner;
 }
 
+export async function searchAddresses(query) {
+  const text = String(query || '').trim();
+  if (text.length < 2) return [];
+  const rows = await nominatim(
+    `/search?format=json&limit=5&countrycodes=vn&q=${encodeURIComponent(text)}`
+  );
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => ({
+      id: String(row.place_id || `${row.lat},${row.lon}`),
+      label: row.display_name || '',
+      latitude: Number(row.lat),
+      longitude: Number(row.lon),
+    }))
+    .filter((item) => item.label && isCoord(item.latitude, item.longitude));
+}
+
 export async function areaFromCoordinates(coords) {
   if (!isCoord(coords?.latitude, coords?.longitude)) return null;
   const data = await nominatim(

@@ -12,6 +12,7 @@ export default function AdminListShell({
   tabs,
   tab,
   onTab,
+  equalTabs = false,
   draft,
   onDraft,
   onApply,
@@ -46,12 +47,19 @@ export default function AdminListShell({
           ) : null}
         </View>
       ) : null}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, equalTabs && styles.tabsEqual]}>
         {tabs.map((item) => {
           const on = tab === item.id;
           return (
-            <Pressable key={item.id} style={[styles.tab, on && styles.tabOn]} onPress={() => onTab(item.id)}>
-              <Text style={[styles.tabText, on && styles.tabTextOn]}>{item.label}</Text>
+            <Pressable
+              key={item.id}
+              style={[styles.tab, equalTabs && styles.tabEqual, on && styles.tabOn]}
+              onPress={() => onTab(item.id)}>
+              <Text
+                style={[styles.tabText, equalTabs && styles.tabTextEqual, on && styles.tabTextOn]}
+                numberOfLines={equalTabs ? 2 : 1}>
+                {item.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -197,6 +205,7 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
   pageSub: { color: '#64748B', marginTop: 2, lineHeight: 18 },
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tabsEqual: { flexWrap: 'nowrap', gap: 0, alignItems: 'stretch' },
   tab: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -205,8 +214,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: '#FFFFFF',
   },
+  tabEqual: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   tabOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   tabText: { color: Colors.text, fontWeight: '700', fontSize: 13 },
+  tabTextEqual: { textAlign: 'center', fontSize: 12, lineHeight: 16 },
   tabTextOn: { color: '#FFFFFF' },
   searchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', width: '100%' },
   search: {

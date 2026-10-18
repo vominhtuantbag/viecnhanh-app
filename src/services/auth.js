@@ -165,7 +165,39 @@ export async function signInWithApple() {
   return signInWithOAuthProvider('apple');
 }
 
+function clearStoredSession() {
+  try {
+    const store = globalThis.localStorage;
+    if (!store) return;
+    const keys = [];
+    for (let index = 0; index < store.length; index += 1) {
+      const key = store.key(index);
+      if (key && key.startsWith('sb-') && key.includes('auth')) keys.push(key);
+    }
+    keys.forEach((key) => store.removeItem(key));
+  } catch (error) {
+    console.log('Logout error:', error);
+  }
+}
+
 export async function signOut() {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw new Error(toAuthErrorMessage(error));
+  let failed = null;
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  } catch (error) {
+    console.log('Logout error:', error);
+    failed = error;
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+      failed = null;
+    } catch (localError) {
+      console.log('Logout error:', localError);
+      failed = localError;
+    }
+  }
+  clearStoredSession();
+  if (failed) {
+    throw new Error(failed.message || 'Đăng xuất thất bại, vui lòng thử lại.');
+  }
 }

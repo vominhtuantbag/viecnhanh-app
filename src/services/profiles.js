@@ -216,6 +216,9 @@ export async function updateProfile(userId, payload) {
   if (payload.wallet_balance !== undefined) row.wallet_balance = Number(payload.wallet_balance) || 0;
   if (payload.province_id !== undefined) row.province_id = payload.province_id || null;
   if (payload.ward_id !== undefined) row.ward_id = payload.ward_id || null;
+  if (payload.address !== undefined) row.address = payload.address?.trim() || null;
+  if (payload.latitude !== undefined) row.latitude = payload.latitude;
+  if (payload.longitude !== undefined) row.longitude = payload.longitude;
 
   const existing = await getProfileById(userId);
   if (!existing) {
@@ -224,6 +227,19 @@ export async function updateProfile(userId, payload) {
 
   const saved = await supabase.from('profiles').upsert(row, { onConflict: 'id' }).select().single();
   if (!saved.error) return saved.data;
+
+  const missingAddress = /address|latitude|longitude/i.test(saved.error.message || '') && /schema cache|42703|column/i.test(saved.error.message || '');
+  if (missingAddress) {
+    const fallback = { ...row };
+    delete fallback.address;
+    delete fallback.latitude;
+    delete fallback.longitude;
+    const withoutAddress = await supabase.from('profiles').upsert(fallback, { onConflict: 'id' }).select().single();
+    if (withoutAddress.error) {
+      throw new Error(withoutAddress.error.message || 'Không lưu được hồ sơ.');
+    }
+    return withoutAddress.data;
+  }
 
   const missingLocation = /province_id|ward_id|schema cache|42703/i.test(saved.error.message || '');
   if (missingLocation && (row.province_id !== undefined || row.ward_id !== undefined)) {

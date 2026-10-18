@@ -10,9 +10,71 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Colors, Radius } from '@/constants/colors';
 
-export function FilterSelect({ label, value, options, onChange, compact = false }) {
+export function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+  compact = false,
+  variant = 'chip',
+  highlighted = false,
+}) {
   const [open, setOpen] = useState(false);
   const selected = options.find((item) => item.id === value);
+
+  const menu = (
+    <Modal visible={open} transparent animationType="fade">
+      <Pressable style={styles.overlay} onPress={() => setOpen(false)}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <Text style={styles.sheetTitle}>{label || 'Bộ lọc'}</Text>
+          <FlatList
+            data={options}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <Pressable
+                style={styles.option}
+                onPress={() => {
+                  onChange(item.id);
+                  setOpen(false);
+                }}>
+                <Text style={[styles.optionText, item.id === value && styles.optionActive]}>
+                  {item.name}
+                </Text>
+                {item.id === value ? (
+                  <Ionicons name="checkmark" size={18} color={Colors.primary} />
+                ) : null}
+              </Pressable>
+            )}
+          />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
+  if (variant === 'tab') {
+    return (
+      <>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label || 'Bộ lọc'}
+          onPress={() => setOpen(true)}
+          style={[styles.tabTrigger, highlighted && styles.tabTriggerOn]}>
+          <Text
+            style={[styles.tabTriggerText, highlighted && styles.tabTriggerTextOn]}
+            numberOfLines={1}>
+            {label || 'Bộ lọc'}
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={14}
+            color={highlighted ? Colors.primary : Colors.textMuted}
+            style={styles.tabChevron}
+          />
+        </Pressable>
+        {menu}
+      </>
+    );
+  }
 
   return (
     <>
@@ -23,37 +85,7 @@ export function FilterSelect({ label, value, options, onChange, compact = false 
         </Text>
         <Ionicons name="chevron-down" size={14} color={Colors.primary} />
       </Pressable>
-
-      <Modal visible={open} transparent animationType="fade">
-        <Pressable style={styles.overlay} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <Text style={styles.sheetTitle}>{label}</Text>
-            <FlatList
-              data={options}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.option}
-                  onPress={() => {
-                    onChange(item.id);
-                    setOpen(false);
-                  }}>
-                  <Text
-                    style={[
-                      styles.optionText,
-                      item.id === value && styles.optionActive,
-                    ]}>
-                    {item.name}
-                  </Text>
-                  {item.id === value ? (
-                    <Ionicons name="checkmark" size={18} color={Colors.primary} />
-                  ) : null}
-                </Pressable>
-              )}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {menu}
     </>
   );
 }
@@ -129,5 +161,33 @@ const styles = StyleSheet.create({
   optionActive: {
     color: Colors.primary,
     fontWeight: '700',
+  },
+  tabTrigger: {
+    flex: 1,
+    width: '100%',
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+  },
+  tabTriggerOn: {
+    backgroundColor: Colors.primarySoft,
+  },
+  tabTriggerText: {
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  tabTriggerTextOn: {
+    color: Colors.primary,
+  },
+  tabChevron: {
+    position: 'absolute',
+    right: 8,
   },
 });

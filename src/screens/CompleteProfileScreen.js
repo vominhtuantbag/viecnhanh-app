@@ -10,19 +10,24 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AddressSearch } from '@/components/AddressSearch';
 import { AreaPicker } from '@/components/AreaPicker';
+import { AvatarPicker } from '@/components/AvatarPicker';
+import { IdentitySection } from '@/components/IdentitySection';
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
+import { useLocation } from '@/context/LocationContext';
 import { toAuthErrorMessage } from '@/lib/auth-errors';
 import { isPhoneAliasEmail } from '@/lib/phone';
+import { areaFromCoordinates } from '@/services/geo';
 
 export default function CompleteProfileScreen() {
   const params = useLocalSearchParams();
-  const { user, profile, completeProfile, signOut, isComplete } = useAuth();
+  const { user, profile, completeProfile, refreshProfile, signOut, isComplete } = useAuth();
+  const { ensureLocation } = useLocation();
   const isEdit = String(params.mode || '') === 'edit';
   const socialLogin = user ? !isPhoneAliasEmail(user.email) : false;
 
@@ -34,16 +39,30 @@ export default function CompleteProfileScreen() {
   );
   const [provinceId, setProvinceId] = useState(() => profile?.province_id || '');
   const [wardId, setWardId] = useState(() => profile?.ward_id || '');
+  const [address, setAddress] = useState(() => profile?.address || '');
+  const [latitude, setLatitude] = useState(() => profile?.latitude ?? null);
+  const [longitude, setLongitude] = useState(() => profile?.longitude ?? null);
+  const [avatarOverride, setAvatarOverride] = useState('');
+  const avatarUrl = avatarOverride || profile?.avatar_url || '';
   const [locationError, setLocationError] = useState('');
+  const [locating, setLocating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const touchedLocation = useRef(false);
+  const touchedAddress = useRef(false);
 
   useEffect(() => {
     if (touchedLocation.current || !profile?.province_id) return;
     setProvinceId(profile.province_id);
     setWardId(profile.ward_id || '');
   }, [profile?.province_id, profile?.ward_id]);
+
+  useEffect(() => {
+    if (touchedAddress.current || !profile?.address) return;
+    setAddress(profile.address);
+    setLatitude(profile.latitude ?? null);
+    setLongitude(profile.longitude ?? null);
+  }, [profile?.address, profile?.latitude, profile?.longitude]);
 
   const title = useMemo(
     () => (isComplete || isEdit ? 'Cập nhật hồ sơ' : 'Hoàn tất hồ sơ để bắt đầu'),
@@ -59,7 +78,15 @@ export default function CompleteProfileScreen() {
     setLocationError('');
     setBusy(true);
     try {
-      await completeProfile({ fullName, phone, provinceId, wardId });
+      await completeProfile({
+        fullName,
+        phone,
+        provinceId,
+        wardId,
+        address,
+        latitude: latitude == null ? undefined : latitude,
+        longitude: longitude == null ? undefined : longitude,
+      });
       if (isEdit && router.canGoBack()) {
         router.back();
       } else {
@@ -69,6 +96,31 @@ export default function CompleteProfileScreen() {
       setError(toAuthErrorMessage(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onLocate() {
+    setLocating(true);
+    setError('');
+    try {
+      const point = await ensureLocation();
+      if (!point) {
+        setError('Chưa lấy được vị trí. Hãy cho phép định vị rồi thử lại.');
+        return;
+      }
+      touchedAddress.current = true;
+      setLatitude(point.latitude);
+      setLongitude(point.longitude);
+      if (point.address) {
+        setAddress(point.address);
+      } else {
+        const area = await areaFromCoordinates(point);
+        if (area?.label) setAddress(area.label);
+      }
+    } catch (err) {
+      setError(err.message || 'Không tra được địa chỉ từ vị trí hiện tại.');
+    } finally {
+      setLocating(false);
     }
   }
 
@@ -92,9 +144,15 @@ export default function CompleteProfileScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="person-circle-outline" size={42} color={Colors.primary} />
-          </View>
+          <AvatarPicker
+            userId={user?.id}
+            name={fullName}
+            uri={avatarUrl}
+            onChange={async (next) => {
+              setAvatarOverride(next);
+              await refreshProfile().catch(() => {});
+            }}
+          />
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.sub}>
             {socialLogin
@@ -143,7 +201,29 @@ export default function CompleteProfileScreen() {
               }}
             />
             <Text style={styles.hint}>Dùng sẵn khi đăng việc. Bạn vẫn đổi được khu vực trên từng tin.</Text>
+
+            <Text style={styles.label}>Địa chỉ chi tiết</Text>
+            <AddressSearch
+              value={address}
+              onChangeText={(text) => {
+                touchedAddress.current = true;
+                setAddress(text);
+              }}
+              onPick={(item) => {
+                touchedAddress.current = true;
+                setAddress(item.label);
+                setLatitude(item.latitude);
+                setLongitude(item.longitude);
+              }}
+              onLocate={onLocate}
+              locating={locating}
+            />
+            <Text style={styles.hint}>
+              Gõ vài chữ để xem gợi ý, hoặc bấm Tự động lấy vị trí. Nút này chỉ điền địa chỉ và tọa độ, không đổi tỉnh/xã ở trên.
+            </Text>
             {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
+
+            <IdentitySection userId={user?.id} />
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -180,15 +260,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 32,
-  },
-  heroIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
   },
   title: {
     fontSize: 26,

@@ -15,6 +15,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AdminCrudPanel from '@/components/AdminCrudPanel';
+import AdminVerificationBoard from '@/components/AdminVerificationBoard';
 import AdminNotificationBoard from '@/components/AdminNotificationBoard';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminUserBoard from '@/components/AdminUserBoard';
@@ -31,6 +32,7 @@ import {
   activePrizeTotal,
   saveRewardAdmin,
 } from '@/services/rewards';
+import { fetchAdminAchievements, saveAchievementAdmin } from '@/services/achievements';
 import { applyCatalogAdmin, catalogRows, replaceCatalogMains, useCatalog, withCatalogFields } from '@/data/catalog';
 import {
   fetchAdminBanners,
@@ -83,7 +85,7 @@ export default function AdminScreen() {
     if (!profile?.is_admin) return;
     setError('');
     try {
-      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats, rewardTasks, rewardItems, rewardClaims, wheelPrizes, mysteryPrizes] = await Promise.all([
+      const [nextStats, nextJobs, nextUsers, nextBids, nextVouchers, nextReviews, nextChats, rewardTasks, rewardItems, rewardClaims, wheelPrizes, mysteryPrizes, achievements] = await Promise.all([
         fetchAdminStats(),
         fetchAdminJobs(),
         fetchAdminUsers(),
@@ -96,6 +98,7 @@ export default function AdminScreen() {
         fetchAdminRewardClaims(),
         fetchAdminWheelPrizes(),
         fetchAdminMysteryPrizes(),
+        fetchAdminAchievements(),
       ]);
       const [bannerRows, categoryRows, templateRows] = await Promise.all([
         fetchAdminBanners(),
@@ -122,6 +125,7 @@ export default function AdminScreen() {
         if (rewardClaims) next['quests-history'] = rewardClaims;
         if (wheelPrizes) next['quests-wheel'] = wheelPrizes;
         if (mysteryPrizes) next['quests-mystery'] = mysteryPrizes;
+        if (achievements) next['quests-achievements'] = achievements;
         if (bannerRows) next['extras-banners'] = bannerRows;
         if (templateRows) next['notifications-templates'] = templateRows;
         return next;
@@ -218,6 +222,18 @@ export default function AdminScreen() {
         }
       } catch (err) {
         const message = err.message || 'Không lưu được.';
+        setError(message);
+        throw err;
+      }
+      return;
+    }
+    if (target.live === 'achievements') {
+      try {
+        await saveAchievementAdmin(action, row);
+        const fresh = await fetchAdminAchievements();
+        if (fresh) setStores((prev) => ({ ...prev, 'quests-achievements': fresh }));
+      } catch (err) {
+        const message = err.message || 'Không lưu được thành tựu.';
         setError(message);
         throw err;
       }
@@ -434,7 +450,9 @@ export default function AdminScreen() {
           </ScrollView>
         ) : (
           <View style={styles.boardSlot}>
-            {page.board === 'users' || page.board === 'verify' || page.board === 'create' ? (
+            {page.board === 'identity' ? (
+              <AdminVerificationBoard />
+            ) : page.board === 'users' || page.board === 'verify' || page.board === 'create' ? (
               <AdminUserBoard page={page} rows={stores[pageId] || []} onCommit={commit} compact={compact} />
             ) : page.board === 'campaigns' ? (
               <AdminNotificationBoard people={stores['users-list'] || []} compact={compact} />

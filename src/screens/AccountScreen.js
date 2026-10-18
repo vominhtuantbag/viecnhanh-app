@@ -14,7 +14,7 @@ const SECTIONS = [
   {
     title: 'Cài đặt tài khoản',
     items: [
-      { icon: 'ribbon-outline', label: 'Kỹ năng của tôi', hint: 'Tích những việc bạn làm được', href: '/settings/skills' },
+      { icon: 'ribbon-outline', label: 'Thành tựu', hint: 'Mốc dài hạn và danh hiệu', href: '/settings/skills' },
       { icon: 'card-outline', label: 'Phương thức thanh toán', href: '/settings/payments' },
       { icon: 'notifications-outline', label: 'Tùy chọn thông báo', href: '/settings/notifications' },
     ],
@@ -45,7 +45,7 @@ const SECTIONS = [
 ];
 
 export default function AccountScreen() {
-  const { session, user, profile, loading, signOut, isComplete } = useAuth();
+  const { session, user, profile, signOut, isComplete } = useAuth();
   const loggedIn = Boolean(session);
   const name = profile?.full_name || 'Khách Việc Nhanh';
   const phoneLabel = profile?.phone
@@ -56,21 +56,14 @@ export default function AccountScreen() {
   const wallet = formatPrice(profile?.wallet_balance ?? 50000);
 
   async function handleLogout() {
-    Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất để chuyển tài khoản khác?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Đăng xuất',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOut();
-            router.replace('/(auth)/login');
-          } catch (err) {
-            Alert.alert('Không đăng xuất được', err.message ?? 'Vui lòng thử lại.');
-          }
-        },
-      },
-    ]);
+    try {
+      await signOut();
+      router.replace('/(auth)/login');
+    } catch (err) {
+      console.log('Logout error:', err);
+      Alert.alert('Đăng xuất thất bại, vui lòng thử lại.');
+      router.replace('/(auth)/login');
+    }
   }
 
   return (
@@ -173,16 +166,10 @@ export default function AccountScreen() {
         ) : null}
 
         {loggedIn ? (
-          <>
-            <Pressable style={styles.switchAccount} onPress={handleLogout}>
-              <Ionicons name="swap-horizontal-outline" size={18} color={Colors.primary} />
-              <Text style={styles.switchText}>Chuyển tài khoản</Text>
-            </Pressable>
-            <Pressable style={styles.logout} onPress={handleLogout} disabled={loading}>
-              <Ionicons name="log-out-outline" size={18} color="#D92D20" />
-              <Text style={styles.logoutText}>Đăng xuất</Text>
-            </Pressable>
-          </>
+          <Pressable style={styles.logout} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={18} color="#D92D20" />
+            <Text style={styles.logoutText}>Đăng xuất</Text>
+          </Pressable>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -356,25 +343,17 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: Colors.textMuted,
   },
-  switchAccount: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-  },
-  switchText: {
-    color: Colors.primary,
-    fontWeight: '800',
-    fontSize: 15,
-  },
   logout: {
+    marginTop: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: '#D92D20',
+    backgroundColor: '#FEF3F2',
   },
   logoutText: {
     color: '#D92D20',

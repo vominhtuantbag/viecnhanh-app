@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CountBadge } from '@/components/CountBadge';
@@ -149,37 +149,37 @@ export default function MyTasksScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Text style={styles.title}>Việc của tôi</Text>
       <View style={styles.toolbar}>
-        <View style={styles.tabsSlot}>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-            style={styles.tabsScroll}
-            contentContainerStyle={styles.tabs}>
-            {TABS.map((item) => {
-              const active = item.id === tab;
-              return (
-                <Pressable
-                  key={item.id}
-                  onPress={() => setTab(item.id)}
-                  style={[styles.tab, active && styles.tabActive]}>
-                  <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
-                    {item.label}
-                  </Text>
-                  {item.id === 'posted' ? <CountBadge count={bidUnreadTotal} /> : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-        <View style={styles.filterSlot}>
-          <FilterSelect
-            compact
-            label="Lọc"
-            value={filterValue}
-            options={FILTERS[tab]}
-            onChange={(next) => setFilters((current) => ({ ...current, [tab]: next }))}
-          />
+        <View style={styles.tabs}>
+          {TABS.map((item) => {
+            const active = item.id === tab;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                onPress={() => setTab(item.id)}
+                style={[styles.tab, active && styles.tabActive]}>
+                <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                {item.id === 'posted' ? (
+                  <View style={styles.badgeAnchor} pointerEvents="none">
+                    <CountBadge count={bidUnreadTotal} />
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+          <View style={styles.tabCell}>
+            <FilterSelect
+              variant="tab"
+              highlighted={filterValue !== 'newest'}
+              label="Bộ lọc"
+              value={filterValue}
+              options={FILTERS[tab]}
+              onChange={(next) => setFilters((current) => ({ ...current, [tab]: next }))}
+            />
+          </View>
         </View>
       </View>
       <FlatList
@@ -212,10 +212,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    width: '100%',
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 10,
@@ -228,30 +225,25 @@ const styles = StyleSheet.create({
         }
       : null),
   },
-  tabsSlot: {
-    flex: 1,
-    minWidth: 0,
-    overflow: 'hidden',
-  },
-  tabsScroll: {
-    flexGrow: 1,
-  },
-  filterSlot: {
-    flexShrink: 0,
-  },
   tabs: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    height: 44,
     gap: 6,
-    paddingRight: 4,
+  },
+  tabCell: {
+    flex: 1,
+    minWidth: 0,
+    height: 44,
   },
   tab: {
-    flexDirection: 'row',
-    flexShrink: 0,
+    flex: 1,
+    minWidth: 0,
+    height: 44,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    justifyContent: 'center',
     borderRadius: Radius.full,
     backgroundColor: Colors.surface,
   },
@@ -259,11 +251,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   tabText: {
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '700',
     color: Colors.textMuted,
   },
   tabTextActive: {
     color: '#FFFFFF',
+  },
+  badgeAnchor: {
+    position: 'absolute',
+    top: -4,
+    right: -2,
   },
   list: {
     paddingHorizontal: 20,

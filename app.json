@@ -47,6 +47,13 @@
       "expo-apple-authentication",
       "expo-web-browser",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Việc Nhanh cần chọn ảnh đại diện và ảnh giấy tờ xác minh.",
+          "cameraPermission": "Việc Nhanh cần máy ảnh để chụp ảnh đại diện và giấy tờ."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Việc Nhanh cần vị trí để điền khu vực khi bạn đăng việc và tính khoảng cách cho thợ."

@@ -221,6 +221,7 @@ export default function AdminCrudPanel({ page, rows, onCommit }) {
         tabs={tabs}
         tab={tab}
         onTab={setTab}
+        equalTabs={Boolean(page.equalTabs)}
         draft={draftFilters}
         onDraft={(patch) => setDraftFilters((current) => ({ ...current, ...patch }))}
         onApply={() => setFilters(draftFilters)}

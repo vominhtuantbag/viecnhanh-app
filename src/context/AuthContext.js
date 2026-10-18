@@ -185,7 +185,7 @@ export function AuthProvider({ children }) {
   }, [hydrateUser]);
 
   const completeProfile = useCallback(
-    async ({ fullName, phone, provinceId, wardId }) => {
+    async ({ fullName, phone, provinceId, wardId, address, latitude, longitude }) => {
       if (!session?.user) {
         throw new Error('Bạn cần đăng nhập trước khi cập nhật hồ sơ.');
       }
@@ -216,6 +216,9 @@ export function AuthProvider({ children }) {
         email: session.user.email,
         province_id: provinceId,
         ward_id: wardId,
+        address,
+        latitude,
+        longitude,
       });
       setProfile(nextProfile);
       return nextProfile;
@@ -224,9 +227,16 @@ export function AuthProvider({ children }) {
   );
 
   const signOut = useCallback(async () => {
-    await authSignOut();
-    setSession(null);
-    setProfile(null);
+    try {
+      await authSignOut();
+    } catch (error) {
+      console.log('Logout error:', error);
+      throw error;
+    } finally {
+      setSession(null);
+      setProfile(null);
+      setProfileReady(true);
+    }
   }, []);
 
   const value = useMemo(

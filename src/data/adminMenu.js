@@ -1,3 +1,4 @@
+import { ACHIEVEMENT_ACTIONS, ACHIEVEMENT_TABS } from '@/data/achievements';
 import { CATEGORIES, getCategoryById } from '@/data/categories';
 import { formatArea } from '@/data/locations';
 
@@ -132,9 +133,9 @@ export const ADMIN_MENU = [
       {
         id: 'users-verify',
         label: 'Xác minh',
-        hint: 'Duyệt hồ sơ đã gửi giấy tờ.',
-        board: 'verify',
-        live: 'users',
+        hint: 'Bật tắt giấy tờ bắt buộc và duyệt hồ sơ đã gửi đủ ảnh.',
+        board: 'identity',
+        live: 'verification',
         fields: [
           { key: 'name', label: 'Họ tên', required: true },
           { key: 'phone', label: 'Số điện thoại' },
@@ -432,6 +433,33 @@ export const ADMIN_MENU = [
           { key: 'targetCount', label: 'Số lần cần đạt', type: 'number', required: true },
           { key: 'rewardPoints', label: 'Xu thưởng', type: 'number', required: true },
           { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE, tab: true },
+        ],
+      },
+      {
+        id: 'quests-achievements',
+        label: 'Thành tựu',
+        hint: '45 mốc dài hạn cho thợ, chủ nhà và hoạt động chung. Sửa mốc, xu thưởng hoặc ẩn từng mục.',
+        live: 'achievements',
+        equalTabs: true,
+        fields: [
+          { key: 'title', label: 'Tên thành tựu', required: true },
+          { key: 'badgeName', label: 'Danh hiệu' },
+          { key: 'description', label: 'Mô tả' },
+          {
+            key: 'category',
+            label: 'Nhóm',
+            type: 'select',
+            tab: true,
+            options: ACHIEVEMENT_TABS.filter((item) => item.id !== 'all').map((item) => ({
+              value: item.id,
+              label: item.label,
+            })),
+          },
+          { key: 'actionType', label: 'Cách tính tiến độ', type: 'select', options: ACHIEVEMENT_ACTIONS },
+          { key: 'targetCount', label: 'Mốc cần đạt', type: 'number', required: true },
+          { key: 'rewardCoins', label: 'Xu thưởng', type: 'number', required: true },
+          { key: 'iconUrl', label: 'Biểu tượng hoặc link ảnh' },
+          { key: 'status', label: 'Hiển thị', type: 'select', options: SHOW_HIDE },
         ],
       },
       {

@@ -12,7 +12,7 @@ export default function SettingsLayout() {
         headerStyle: { backgroundColor: Colors.surface },
         contentStyle: { backgroundColor: Colors.background },
       }}>
-      <Stack.Screen name="skills" options={{ title: 'Kỹ năng của tôi' }} />
+      <Stack.Screen name="skills" options={{ title: 'Thành tựu' }} />
       <Stack.Screen name="payments" options={{ title: 'Phương thức thanh toán' }} />
       <Stack.Screen name="notifications" options={{ title: 'Tùy chọn thông báo' }} />
       <Stack.Screen name="job-alerts" options={{ title: 'Thông báo việc làm' }} />

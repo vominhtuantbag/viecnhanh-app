@@ -15,7 +15,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { BottomSheet, SheetFooter } from '@/components/BottomSheet';
 import { RangeSlider } from '@/components/RangeSlider';
@@ -197,6 +197,14 @@ export default function BrowseScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshJobs} />}
         showsVerticalScrollIndicator={false}
       />
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Đăng việc mới"
+        onPress={() => router.push('/create')}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </Pressable>
 
       <BottomSheet
         visible={sheet === 'sort'}
@@ -538,10 +546,36 @@ const styles = StyleSheet.create({
   listWrap: {
     flex: 1,
   },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)' },
+      default: {
+        elevation: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+      },
+    }),
+  },
+  fabPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.96 }],
+  },
   list: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingBottom: 28,
+    paddingBottom: 96,
   },
   loader: {
     marginTop: 48,

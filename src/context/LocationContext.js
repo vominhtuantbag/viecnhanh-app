@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
-import * as Location from 'expo-location';
 
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import {
+  checkAndFetchStartupLocation,
+  fetchCurrentPlace,
+  saveDetailedPlace,
+} from '@/services/location';
 
 const LocationContext = createContext(null);
 
@@ -15,81 +17,13 @@ function asPoint(latitude, longitude) {
   return { latitude: lat, longitude: lng };
 }
 
-async function saveProfileCoordinates(userId, point) {
-  if (!userId || String(userId).startsWith('local-')) return false;
-  const stamp = new Date().toISOString();
-  const full = await supabase
-    .from('profiles')
-    .update({
-      latitude: point.latitude,
-      longitude: point.longitude,
-      location_updated_at: stamp,
-    })
-    .eq('id', userId);
-  if (!full.error) return true;
-  if (/location_updated_at/i.test(full.error.message || '')) {
-    const plain = await supabase
-      .from('profiles')
-      .update({ latitude: point.latitude, longitude: point.longitude })
-      .eq('id', userId);
-    return !plain.error;
-  }
-  return false;
-}
-
-async function readDevicePoint() {
-  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && !navigator.geolocation) {
-    const error = new Error('Máy này không có định vị.');
-    error.code = 'LOCATION_OFF';
-    throw error;
-  }
-
-  const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
-  if (!servicesOn) {
-    const error = new Error('Định vị đang tắt.');
-    error.code = 'LOCATION_OFF';
-    throw error;
-  }
-
-  const current = await Location.getForegroundPermissionsAsync();
-  let status = current.status;
-  if (status !== 'granted') {
-    const asked = await Location.requestForegroundPermissionsAsync();
-    status = asked.status;
-  }
-  if (status !== 'granted') {
-    const error = new Error('Bạn chưa cho phép dùng vị trí.');
-    error.code = 'LOCATION_DENIED';
-    throw error;
-  }
-
-  const position = await Promise.race([
-    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-    new Promise((_, reject) => {
-      setTimeout(() => {
-        const error = new Error('Lấy vị trí quá lâu.');
-        error.code = 'LOCATION_TIMEOUT';
-        reject(error);
-      }, 12000);
-    }),
-  ]);
-
-  const point = asPoint(position?.coords?.latitude, position?.coords?.longitude);
-  if (!point) {
-    const error = new Error('Không đọc được tọa độ.');
-    error.code = 'LOCATION_OFF';
-    throw error;
-  }
-  return point;
-}
-
 export function LocationProvider({ children }) {
   const { session, profile, refreshProfile } = useAuth();
   const userId = session?.user?.id || null;
   const [coords, setCoords] = useState(null);
   const [status, setStatus] = useState('idle');
   const flight = useRef(null);
-  const askedFor = useRef('');
+  const startupFor = useRef('');
 
   const savedLat = profile?.latitude;
   const savedLng = profile?.longitude;
@@ -101,11 +35,15 @@ export function LocationProvider({ children }) {
     const run = (async () => {
       setStatus('asking');
       try {
-        const next = await readDevicePoint();
+        const next = await fetchCurrentPlace();
+        if (!next) {
+          setStatus('denied');
+          return null;
+        }
         setCoords(next);
         setStatus('ready');
         if (userId) {
-          const savedOk = await saveProfileCoordinates(userId, next);
+          const savedOk = await saveDetailedPlace(userId, next);
           if (savedOk) refreshProfile().catch(() => {});
         }
         return next;
@@ -126,13 +64,28 @@ export function LocationProvider({ children }) {
   }, [refreshProfile, userId]);
 
   useEffect(() => {
-    if (!userId || askedFor.current === userId) return undefined;
+    const key = userId || 'guest';
+    if (startupFor.current === key) return undefined;
+    startupFor.current = key;
+    let fired = false;
     const timer = setTimeout(() => {
-      askedFor.current = userId;
-      ensureLocation().catch(() => {});
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [ensureLocation, userId]);
+      fired = true;
+      checkAndFetchStartupLocation(userId)
+        .then((place) => {
+          if (!place) return;
+          setCoords(place);
+          setStatus('ready');
+          if (userId) refreshProfile().catch(() => {});
+        })
+        .catch((err) => {
+          console.log('Auto fetch location on startup error:', err);
+        });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      if (!fired) startupFor.current = '';
+    };
+  }, [refreshProfile, userId]);
 
   const value = useMemo(
     () => ({
