@@ -29,7 +29,6 @@ import {
   isJobLive,
   jobFlowStatus,
   offerLabel,
-  questionLabel,
   statusLabel,
   viewLabel,
 } from '@/data/jobs';
@@ -140,7 +139,6 @@ export default function JobDetailScreen() {
   const isAssigned = flowStatus === JOB_STATUS.ASSIGNED;
   const isCompleted = flowStatus === JOB_STATUS.COMPLETED;
   const isCancelled = flowStatus === JOB_STATUS.CLOSED;
-  const questions = job.questions ?? 0;
   const alreadyBid = Boolean(
     profile?.id && (job.quotes || []).some((quote) => quote.workerId === profile.id)
   );
@@ -293,12 +291,8 @@ export default function JobDetailScreen() {
 
           <View style={styles.stats}>
             <Text style={styles.stat}>{statusLabel(flowStatus)}</Text>
-            <Text style={styles.dot}>·</Text>
             <Text style={styles.stat}>{viewLabel(job.views)}</Text>
-            <Text style={styles.dot}>·</Text>
             <Text style={styles.stat}>{offerLabel(job.quotes.length)}</Text>
-            <Text style={styles.dot}>·</Text>
-            <Text style={styles.stat}>{questionLabel(questions)}</Text>
           </View>
 
           {job.poster?.id ? (
@@ -341,10 +335,6 @@ export default function JobDetailScreen() {
           <View style={styles.infoRow}>
             <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
             <Text style={styles.infoText}>{job.dateLabel}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Ionicons name="eye-outline" size={18} color={Colors.primary} />
-            <Text style={styles.infoText}>{viewLabel(job.views)} từ tài khoản đã đăng nhập</Text>
           </View>
         </View>
 
@@ -594,18 +584,16 @@ const styles = StyleSheet.create({
   },
   stats: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
     marginTop: 12,
-    gap: 6,
+    gap: 8,
   },
   stat: {
+    flex: 1,
+    textAlign: 'center',
     fontWeight: '700',
     color: Colors.primary,
     fontSize: 13,
-  },
-  dot: {
-    color: Colors.textLight,
   },
   infoCard: {
     marginTop: 14,

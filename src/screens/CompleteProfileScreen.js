@@ -17,18 +17,18 @@ import { AddressSearch } from '@/components/AddressSearch';
 import { AreaPicker } from '@/components/AreaPicker';
 import { AvatarPicker } from '@/components/AvatarPicker';
 import { IdentitySection } from '@/components/IdentitySection';
+import { MapPinModal } from '@/components/MapPinModal';
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
-import { useLocation } from '@/context/LocationContext';
 import { toAuthErrorMessage } from '@/lib/auth-errors';
 import { isPhoneAliasEmail } from '@/lib/phone';
-import { areaFromCoordinates } from '@/services/geo';
+import { saveDetailedPlace } from '@/services/location';
 
 export default function CompleteProfileScreen() {
   const params = useLocalSearchParams();
   const { user, profile, completeProfile, refreshProfile, signOut, isComplete } = useAuth();
-  const { ensureLocation } = useLocation();
   const isEdit = String(params.mode || '') === 'edit';
+  const showAddress = isEdit || isComplete;
   const socialLogin = user ? !isPhoneAliasEmail(user.email) : false;
 
   const [fullName, setFullName] = useState(
@@ -45,7 +45,7 @@ export default function CompleteProfileScreen() {
   const [avatarOverride, setAvatarOverride] = useState('');
   const avatarUrl = avatarOverride || profile?.avatar_url || '';
   const [locationError, setLocationError] = useState('');
-  const [locating, setLocating] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const touchedLocation = useRef(false);
@@ -83,9 +83,13 @@ export default function CompleteProfileScreen() {
         phone,
         provinceId,
         wardId,
-        address,
-        latitude: latitude == null ? undefined : latitude,
-        longitude: longitude == null ? undefined : longitude,
+        ...(showAddress
+          ? {
+              address,
+              latitude: latitude == null ? undefined : latitude,
+              longitude: longitude == null ? undefined : longitude,
+            }
+          : {}),
       });
       if (isEdit && router.canGoBack()) {
         router.back();
@@ -99,29 +103,16 @@ export default function CompleteProfileScreen() {
     }
   }
 
-  async function onLocate() {
-    setLocating(true);
-    setError('');
-    try {
-      const point = await ensureLocation();
-      if (!point) {
-        setError('Chưa lấy được vị trí. Hãy cho phép định vị rồi thử lại.');
-        return;
-      }
-      touchedAddress.current = true;
-      setLatitude(point.latitude);
-      setLongitude(point.longitude);
-      if (point.address) {
-        setAddress(point.address);
-      } else {
-        const area = await areaFromCoordinates(point);
-        if (area?.label) setAddress(area.label);
-      }
-    } catch (err) {
-      setError(err.message || 'Không tra được địa chỉ từ vị trí hiện tại.');
-    } finally {
-      setLocating(false);
-    }
+  async function onMapConfirm(place) {
+    touchedAddress.current = true;
+    setAddress(place.address);
+    setLatitude(place.latitude);
+    setLongitude(place.longitude);
+    setMapOpen(false);
+    if (!user?.id) return;
+    const saved = await saveDetailedPlace(user.id, place);
+    if (saved) refreshProfile().catch(() => {});
+    else setError('Đã điền địa chỉ. Tọa độ chưa lưu được lên hồ sơ.');
   }
 
   async function onLogout() {
@@ -202,25 +193,28 @@ export default function CompleteProfileScreen() {
             />
             <Text style={styles.hint}>Dùng sẵn khi đăng việc. Bạn vẫn đổi được khu vực trên từng tin.</Text>
 
-            <Text style={styles.label}>Địa chỉ chi tiết</Text>
-            <AddressSearch
-              value={address}
-              onChangeText={(text) => {
-                touchedAddress.current = true;
-                setAddress(text);
-              }}
-              onPick={(item) => {
-                touchedAddress.current = true;
-                setAddress(item.label);
-                setLatitude(item.latitude);
-                setLongitude(item.longitude);
-              }}
-              onLocate={onLocate}
-              locating={locating}
-            />
-            <Text style={styles.hint}>
-              Gõ vài chữ để xem gợi ý, hoặc bấm Tự động lấy vị trí. Nút này chỉ điền địa chỉ và tọa độ, không đổi tỉnh/xã ở trên.
-            </Text>
+            {showAddress ? (
+              <>
+                <Text style={styles.label}>Địa chỉ chi tiết</Text>
+                <AddressSearch
+                  value={address}
+                  onChangeText={(text) => {
+                    touchedAddress.current = true;
+                    setAddress(text);
+                  }}
+                  onPick={(item) => {
+                    touchedAddress.current = true;
+                    setAddress(item.label);
+                    setLatitude(item.latitude);
+                    setLongitude(item.longitude);
+                  }}
+                  onOpenMap={() => setMapOpen(true)}
+                />
+                <Text style={styles.hint}>
+                  Gõ vài chữ để xem gợi ý, hoặc ghim một điểm trên bản đồ. Việc này không đổi tỉnh/xã ở trên.
+                </Text>
+              </>
+            ) : null}
             {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
 
             <IdentitySection userId={user?.id} />
@@ -244,6 +238,14 @@ export default function CompleteProfileScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+      {mapOpen ? (
+        <MapPinModal
+          latitude={latitude}
+          longitude={longitude}
+          onClose={() => setMapOpen(false)}
+          onConfirm={onMapConfirm}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

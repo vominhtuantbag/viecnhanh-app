@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Colors, Radius } from '@/constants/colors';
 import { searchAddresses } from '@/services/geo';
 
-export function AddressSearch({ value, onChangeText, onPick, onLocate, locating }) {
+export function AddressSearch({ value, onChangeText, onPick, onOpenMap }) {
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState({ query: '', items: [] });
@@ -52,16 +52,11 @@ export function AddressSearch({ value, onChangeText, onPick, onLocate, locating 
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Tự động lấy vị trí"
-          style={[styles.gps, locating && styles.gpsBusy]}
-          onPress={onLocate}
-          disabled={locating}>
-          {locating ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <Ionicons name="navigate" size={16} color="#FFFFFF" />
-          )}
-          <Text style={styles.gpsText}>Tự động lấy vị trí</Text>
+          accessibilityLabel="Chọn vị trí trên bản đồ"
+          style={styles.gps}
+          onPress={onOpenMap}>
+          <Ionicons name="map" size={16} color="#FFFFFF" />
+          <Text style={styles.gpsText}>Chọn vị trí trên bản đồ</Text>
         </Pressable>
       </View>
       {showSearch && (searching || items.length > 0) ? (
@@ -123,9 +118,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
-  },
-  gpsBusy: {
-    opacity: 0.75,
   },
   menu: {
     marginTop: 6,
