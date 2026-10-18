@@ -48,6 +48,8 @@ create table public.profiles (
   notify_reviews boolean not null default true,
   notify_promo boolean not null default true,
   id_verified boolean not null default false,
+  province_id text,
+  ward_id text,
   created_at timestamptz not null default now()
 );
 

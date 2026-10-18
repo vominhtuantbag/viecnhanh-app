@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { BASE_CATEGORIES, BASE_SKILLS, BASE_SUBS, POPULAR_IDS } from '@/data/categorySeed';
+import { BASE_CATEGORIES, BASE_SKILLS, BASE_SUBS, BASE_TASKS, POPULAR_IDS } from '@/data/categorySeed';
 import baseAreas from '@/data/vnAreas.json';
 
 const KEY = 'viecnhanh.catalog.v1';
@@ -110,6 +110,7 @@ function build(overrides) {
     mains: overrides.mains || seedMains(),
     subs: overrides.subs || BASE_SUBS.map((item) => ({ ...item })),
     skills: overrides.skills || BASE_SKILLS.map((item) => ({ ...item })),
+    tasks: BASE_TASKS.map((item) => ({ ...item })),
     provinces,
   };
 }
@@ -181,6 +182,13 @@ export function visibleSubs(catalog = view) {
 export function visibleSkills(catalog = view) {
   const parents = new Set(visibleMains(catalog).map((item) => item.id));
   return catalog.skills.filter((item) => shown(item.status) && parents.has(item.parentId));
+}
+
+export function tasksForSubcategory(subId, catalog = view) {
+  if (!subId) return [];
+  const subVisible = visibleSubs(catalog).some((item) => item.id === subId);
+  if (!subVisible) return [];
+  return (catalog.tasks || []).filter((item) => shown(item.status) && item.parentId === subId);
 }
 
 export function visibleProvinces(catalog = view) {

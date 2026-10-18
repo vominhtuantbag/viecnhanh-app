@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -13,7 +13,13 @@ import { Colors, Radius } from '@/constants/colors';
 import { useCatalog, visibleProvinces } from '@/data/catalog';
 import { getProvinceById, getWardById } from '@/data/locations';
 
-export function AreaPicker({ provinceId, wardId, onChange }) {
+export function AreaPicker({
+  provinceId,
+  wardId,
+  onChange,
+  provinceLabel = 'Tỉnh/Thành',
+  wardLabel = 'Xã/Phường',
+}) {
   const catalog = useCatalog();
   const [openField, setOpenField] = useState(null);
   const [query, setQuery] = useState('');
@@ -21,10 +27,6 @@ export function AreaPicker({ provinceId, wardId, onChange }) {
   const province = getProvinceById(provinceId);
   const ward = getWardById(provinceId, wardId);
   const visible = visibleProvinces(catalog);
-
-  useEffect(() => {
-    setQuery('');
-  }, [openField]);
 
   const options = useMemo(() => {
     const source =
@@ -51,14 +53,21 @@ export function AreaPicker({ provinceId, wardId, onChange }) {
   return (
     <View style={styles.row}>
       <SelectButton
-        label="Tỉnh/Thành"
+        label={provinceLabel}
         value={province && province.status !== 'hide' ? province.name : 'Chọn'}
-        onPress={() => setOpenField('province')}
+        onPress={() => {
+          setQuery('');
+          setOpenField('province');
+        }}
       />
       <SelectButton
-        label="Xã/Phường"
+        label={wardLabel}
         value={ward && ward.status !== 'hide' && province?.status !== 'hide' ? ward.name : 'Chọn'}
-        onPress={() => province && province.status !== 'hide' && setOpenField('ward')}
+        onPress={() => {
+          if (!province || province.status === 'hide') return;
+          setQuery('');
+          setOpenField('ward');
+        }}
         disabled={!province || province.status === 'hide'}
       />
 

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
-import { JOB_STATUS, isJobLive, shouldAutoApproveJob } from '@/data/jobs';
+import { JOB_STATUS, isJobLive } from '@/data/jobs';
 import { subscribePostgresChanges } from '@/lib/realtime';
 import {
   cancelHireRecord,
@@ -9,7 +9,6 @@ import {
   completeJobRecord,
   createBidRecord,
   createJobRecord,
-  createLocalJob,
   fetchJobById,
   fetchJobs,
   hasWorkerBid,
@@ -169,23 +168,16 @@ export function JobsProvider({ children }) {
 
   const addJob = useCallback(async (payload) => {
     const currentProfile = requireProfile();
-    const existingJobs = jobsRef.current;
-    const autoApprove = shouldAutoApproveJob(existingJobs, currentProfile.id);
 
     try {
-      const row = await createJobRecord(currentProfile.id, payload, existingJobs);
+      const row = await createJobRecord(currentProfile.id, payload, jobsRef.current);
       const mapped = mapJob(row, currentProfile.id);
       setJobs((current) => [mapped, ...current.filter((job) => job.id !== mapped.id)]);
       setError(null);
       return mapped;
     } catch (err) {
       setError(err.message ?? 'Không đăng được tin lên server.');
-      const mapped = {
-        ...createLocalJob(currentProfile.id, payload, { autoApprove }),
-        poster: mapWorkerProfile(currentProfile, { id: currentProfile.id }),
-      };
-      setJobs((current) => [mapped, ...current.filter((job) => job.id !== mapped.id)]);
-      return mapped;
+      throw err;
     }
   }, [requireProfile]);
 

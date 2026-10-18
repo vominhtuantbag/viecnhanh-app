@@ -235,7 +235,7 @@ export default function HomeScreen() {
             <View key={item.id} style={styles.cell}>
               <Pressable
                 style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
-                onPress={() => goToCreate({ categoryId: item.id, title: item.name })}>
+                onPress={() => goToCreate({ categoryId: item.id })}>
                 <View style={styles.iconWrap}>
                   {item.iconUrl ? (
                     <Image source={{ uri: item.iconUrl }} style={styles.catIcon} contentFit="contain" />

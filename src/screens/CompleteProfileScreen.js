@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AreaPicker } from '@/components/AreaPicker';
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
 import { toAuthErrorMessage } from '@/lib/auth-errors';
@@ -31,9 +32,18 @@ export default function CompleteProfileScreen() {
   const [phone, setPhone] = useState(
     () => profile?.phone || user?.user_metadata?.phone || ''
   );
-  const [referralCode, setReferralCode] = useState('');
+  const [provinceId, setProvinceId] = useState(() => profile?.province_id || '');
+  const [wardId, setWardId] = useState(() => profile?.ward_id || '');
+  const [locationError, setLocationError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const touchedLocation = useRef(false);
+
+  useEffect(() => {
+    if (touchedLocation.current || !profile?.province_id) return;
+    setProvinceId(profile.province_id);
+    setWardId(profile.ward_id || '');
+  }, [profile?.province_id, profile?.ward_id]);
 
   const title = useMemo(
     () => (isComplete || isEdit ? 'Cập nhật hồ sơ' : 'Hoàn tất hồ sơ để bắt đầu'),
@@ -42,9 +52,14 @@ export default function CompleteProfileScreen() {
 
   async function onSave() {
     setError('');
+    if (!provinceId || !wardId) {
+      setLocationError(!provinceId ? 'Vui lòng chọn tỉnh/thành.' : 'Vui lòng chọn xã/phường.');
+      return;
+    }
+    setLocationError('');
     setBusy(true);
     try {
-      await completeProfile({ fullName, phone, referralCode });
+      await completeProfile({ fullName, phone, provinceId, wardId });
       if (isEdit && router.canGoBack()) {
         router.back();
       } else {
@@ -83,8 +98,8 @@ export default function CompleteProfileScreen() {
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.sub}>
             {socialLogin
-              ? 'Bạn đăng nhập bằng Google/Apple. Hãy thêm họ tên và số điện thoại để khách hàng liên hệ khi nhận việc.'
-              : 'Chỉ còn họ và tên — số điện thoại đã gắn với tài khoản của bạn.'}
+              ? 'Bạn đăng nhập bằng Google/Apple. Hãy thêm họ tên, số điện thoại và khu vực thường dùng khi đăng việc.'
+              : 'Thêm họ tên và khu vực thường dùng. Số điện thoại đã gắn với tài khoản của bạn.'}
           </Text>
 
           <View style={styles.card}>
@@ -114,19 +129,21 @@ export default function CompleteProfileScreen() {
               <Text style={styles.hint}>Dùng số Việt Nam. Người thuê việc sẽ thấy số này.</Text>
             )}
 
-            {!profile?.referred_by ? (
-              <>
-                <Text style={styles.label}>Mã giới thiệu (không bắt buộc)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ví dụ VNAB12CD"
-                  placeholderTextColor={Colors.textLight}
-                  autoCapitalize="characters"
-                  value={referralCode}
-                  onChangeText={setReferralCode}
-                />
-              </>
-            ) : null}
+            <Text style={styles.label}>Khu vực mặc định</Text>
+            <AreaPicker
+              provinceId={provinceId}
+              wardId={wardId}
+              provinceLabel="Tỉnh / Thành phố"
+              wardLabel="Xã / Phường"
+              onChange={({ provinceId: nextProvince, wardId: nextWard }) => {
+                touchedLocation.current = true;
+                setProvinceId(nextProvince);
+                setWardId(nextWard);
+                setLocationError('');
+              }}
+            />
+            <Text style={styles.hint}>Dùng sẵn khi đăng việc. Bạn vẫn đổi được khu vực trên từng tin.</Text>
+            {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 

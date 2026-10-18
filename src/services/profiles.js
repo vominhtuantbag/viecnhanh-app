@@ -214,13 +214,28 @@ export async function updateProfile(userId, payload) {
   if (payload.notify_reviews !== undefined) row.notify_reviews = Boolean(payload.notify_reviews);
   if (payload.notify_promo !== undefined) row.notify_promo = Boolean(payload.notify_promo);
   if (payload.wallet_balance !== undefined) row.wallet_balance = Number(payload.wallet_balance) || 0;
+  if (payload.province_id !== undefined) row.province_id = payload.province_id || null;
+  if (payload.ward_id !== undefined) row.ward_id = payload.ward_id || null;
 
   const existing = await getProfileById(userId);
   if (!existing) {
     row.wallet_balance = 50000;
   }
 
-  return unwrap(
-    await supabase.from('profiles').upsert(row, { onConflict: 'id' }).select().single()
-  );
+  const saved = await supabase.from('profiles').upsert(row, { onConflict: 'id' }).select().single();
+  if (!saved.error) return saved.data;
+
+  const missingLocation = /province_id|ward_id|schema cache|42703/i.test(saved.error.message || '');
+  if (missingLocation && (row.province_id !== undefined || row.ward_id !== undefined)) {
+    const fallback = { ...row };
+    delete fallback.province_id;
+    delete fallback.ward_id;
+    const withoutLocation = await supabase.from('profiles').upsert(fallback, { onConflict: 'id' }).select().single();
+    if (withoutLocation.error) {
+      throw new Error(withoutLocation.error.message || 'Không lưu được hồ sơ.');
+    }
+    throw new Error('Đã lưu tên và số điện thoại. Khu vực chưa lưu được vì máy chủ chưa có cột tỉnh/xã.');
+  }
+
+  throw new Error(saved.error.message || 'Không lưu được hồ sơ.');
 }

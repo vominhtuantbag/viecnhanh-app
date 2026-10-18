@@ -185,7 +185,7 @@ export function AuthProvider({ children }) {
   }, [hydrateUser]);
 
   const completeProfile = useCallback(
-    async ({ fullName, phone, referralCode }) => {
+    async ({ fullName, phone, provinceId, wardId }) => {
       if (!session?.user) {
         throw new Error('Bạn cần đăng nhập trước khi cập nhật hồ sơ.');
       }
@@ -196,6 +196,12 @@ export function AuthProvider({ children }) {
       if (!parsed) {
         throw new Error('Số điện thoại không hợp lệ. Dùng số Việt Nam, ví dụ 0912 345 678.');
       }
+      if (!provinceId) {
+        throw new Error('Vui lòng chọn tỉnh/thành.');
+      }
+      if (!wardId) {
+        throw new Error('Vui lòng chọn xã/phường.');
+      }
 
       await supabase.auth.updateUser({
         data: {
@@ -204,19 +210,13 @@ export function AuthProvider({ children }) {
         },
       });
 
-      let nextProfile = await updateProfile(session.user.id, {
+      const nextProfile = await updateProfile(session.user.id, {
         full_name: fullName.trim(),
         phone: parsed.e164,
         email: session.user.email,
+        province_id: provinceId,
+        ward_id: wardId,
       });
-      if (referralCode) {
-        try {
-          await applyReferralCode(referralCode);
-          nextProfile = await ensureAuthProfile(session.user);
-        } catch {
-          // Giữ hồ sơ; mã mời nhập lại sau.
-        }
-      }
       setProfile(nextProfile);
       return nextProfile;
     },

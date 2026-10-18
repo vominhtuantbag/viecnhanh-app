@@ -320,48 +320,94 @@ export async function fetchJobById(id) {
   return enrichJobsWithPosters(await enrichBidsWithWorkers(result.data));
 }
 
+function budgetAmount(payload) {
+  const raw = payload?.price ?? payload?.budget ?? '';
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (!digits) return NaN;
+  return Number(digits);
+}
+
+function jobInsertMessage(error) {
+  const message = String(error?.message || '');
+  const code = String(error?.code || '');
+  if (code === '23503' || /foreign key|profiles/i.test(message)) {
+    return 'Tài khoản chưa có hồ sơ trên máy chủ. Hãy hoàn tất hồ sơ rồi đăng lại.';
+  }
+  if (/jwt|not authenticated|permission denied|42501|row-level/i.test(message)) {
+    return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+  }
+  return message || 'Không đăng được tin. Vui lòng thử lại.';
+}
+
+async function insertJobRow(row) {
+  let result = await supabase.from('jobs').insert(row).select('*').single();
+  const message = result.error?.message || '';
+  if (result.error && row.latitude != null && /latitude|longitude|42703/i.test(message)) {
+    const next = { ...row };
+    delete next.latitude;
+    delete next.longitude;
+    result = await supabase.from('jobs').insert(next).select('*').single();
+  }
+  if (result.error) {
+    const error = new Error(jobInsertMessage(result.error));
+    error.cause = result.error;
+    throw error;
+  }
+  return result.data;
+}
+
 export async function createJobRecord(profileId, payload, existingJobs = []) {
-  let autoApprove = shouldAutoApproveJob(existingJobs, profileId);
-
-  const { count, error } = await supabase
-    .from('jobs')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', profileId)
-    .eq('status', 'approved');
-
-  if (!error && (count ?? 0) > 0) {
-    autoApprove = false;
-  }
-
-  const row = {
-    user_id: profileId,
-    title: payload.title.trim(),
-    description: payload.description.trim(),
-    price: Number(payload.price) || 0,
-    province_id: payload.provinceId,
-    ward_id: payload.wardId,
-    category_id: payload.categoryId || null,
-    status: autoApprove ? 'approved' : 'pending',
-    is_approved: autoApprove,
-    views_count: 0,
-  };
-  if (payload.latitude != null && payload.longitude != null && payload.latitude !== '' && payload.longitude !== '') {
-    const latitude = Number(payload.latitude);
-    const longitude = Number(payload.longitude);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-      row.latitude = latitude;
-      row.longitude = longitude;
+  try {
+    const authResult = await supabase.auth.getUser();
+    if (authResult.error) console.log('Post job error:', authResult.error);
+    const authId = authResult.data?.user?.id || '';
+    const fallbackId = profileId && !String(profileId).startsWith('local-') ? profileId : '';
+    const userId = authId || fallbackId;
+    if (!userId) {
+      const error = new Error('Vui lòng đăng nhập để đăng việc.');
+      error.code = 'AUTH_REQUIRED';
+      throw error;
     }
-  }
 
-  const inserted = await supabase.from('jobs').insert(row).select(JOB_SELECT).single();
-  if (!inserted.error) return inserted.data;
-  if (row.latitude != null && /latitude|longitude|42703/i.test(inserted.error.message || '')) {
-    delete row.latitude;
-    delete row.longitude;
-    return unwrap(await supabase.from('jobs').insert(row).select(JOB_SELECT).single());
+    let autoApprove = shouldAutoApproveJob(existingJobs, userId);
+    const approvedCount = await supabase
+      .from('jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'approved');
+    if (!approvedCount.error && (approvedCount.count ?? 0) > 0) autoApprove = false;
+
+    const price = budgetAmount(payload);
+    const row = {
+      user_id: userId,
+      title: String(payload.title || '').trim(),
+      description: String(payload.description || '').trim(),
+      price: Number.isFinite(price) ? price : 0,
+      province_id: payload.provinceId || payload.province || null,
+      ward_id: payload.wardId || payload.ward || null,
+      category_id: payload.categoryId || payload.category_id || null,
+      status: autoApprove ? 'approved' : 'pending',
+      is_approved: autoApprove,
+      views_count: 0,
+    };
+    if (!row.title || !row.description) {
+      throw new Error('Thiếu tiêu đề hoặc mô tả.');
+    }
+    if (payload.latitude != null && payload.longitude != null && payload.latitude !== '' && payload.longitude !== '') {
+      const latitude = Number(payload.latitude);
+      const longitude = Number(payload.longitude);
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        row.latitude = latitude;
+        row.longitude = longitude;
+      }
+    }
+
+    return await insertJobRow(row);
+  } catch (error) {
+    console.log('Post job error:', error?.cause || error);
+    if (error instanceof Error) throw error;
+    throw new Error('Không đăng được tin. Vui lòng thử lại.');
   }
-  return unwrap(inserted);
 }
 
 export async function recordUniqueJobView(jobId, { viewerId, ownerId } = {}) {
