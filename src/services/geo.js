@@ -185,18 +185,39 @@ export async function coordinatesForArea(provinceId, wardId) {
   return { latitude: Number(row.lat), longitude: Number(row.lon) };
 }
 
-export async function roadDistanceKm(from, to) {
+function straightLine(from, to) {
+  return [
+    [from.latitude, from.longitude],
+    [to.latitude, to.longitude],
+  ];
+}
+
+export async function fetchRoadRoute(from, to) {
   const straight = haversineKm(from, to);
   if (straight == null) return null;
+  const fallback = { km: straight, line: straightLine(from, to) };
   try {
-    const url = `${OSRM}/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=false`;
+    const url = `${OSRM}/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson`;
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!response.ok) return straight;
+    if (!response.ok) return fallback;
     const data = await response.json();
-    const meters = Number(data?.routes?.[0]?.distance);
-    if (!Number.isFinite(meters) || meters <= 0) return straight;
-    return meters / 1000;
+    const route = data?.routes?.[0];
+    const meters = Number(route?.distance);
+    const line = Array.isArray(route?.geometry?.coordinates)
+      ? route.geometry.coordinates
+          .map((pair) => [Number(pair[1]), Number(pair[0])])
+          .filter((pair) => isCoord(pair[0], pair[1]))
+      : [];
+    return {
+      km: Number.isFinite(meters) && meters > 0 ? meters / 1000 : straight,
+      line: line.length > 1 ? line : fallback.line,
+    };
   } catch {
-    return straight;
+    return fallback;
   }
+}
+
+export async function roadDistanceKm(from, to) {
+  const route = await fetchRoadRoute(from, to);
+  return route ? route.km : null;
 }

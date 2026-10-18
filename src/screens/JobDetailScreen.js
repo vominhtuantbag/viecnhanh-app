@@ -16,6 +16,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import BidCard from '@/components/BidCard';
+import { RouteMapModal } from '@/components/RouteMapModal';
 import UserIdentityCard from '@/components/UserIdentityCard';
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { useJobs } from '@/context/JobsContext';
@@ -55,6 +56,24 @@ export default function JobDetailScreen() {
   const [closing, setClosing] = useState(false);
   const [roadKm, setRoadKm] = useState(null);
   const [roadKey, setRoadKey] = useState('');
+  const [routeOpen, setRouteOpen] = useState(false);
+  const [routeFrom, setRouteFrom] = useState(null);
+  const [routeTo, setRouteTo] = useState(null);
+  const [openingMap, setOpeningMap] = useState(false);
+
+  async function openRouteMap() {
+    if (openingMap) return;
+    setOpeningMap(true);
+    try {
+      let here = point;
+      if (!here) here = await ensureLocation();
+      setRouteFrom(here);
+      setRouteTo(job ? jobPoint(job) : null);
+      setRouteOpen(true);
+    } finally {
+      setOpeningMap(false);
+    }
+  }
 
   async function shareJob() {
     try {
@@ -313,7 +332,18 @@ export default function JobDetailScreen() {
           <View style={styles.infoRow}>
             <Ionicons name="location-outline" size={18} color={Colors.primary} />
             <View style={styles.flex}>
-              <Text style={styles.infoText}>{formatArea(job.provinceId, job.wardId)}</Text>
+              <View style={styles.locationLine}>
+                <Text style={styles.infoText}>{formatArea(job.provinceId, job.wardId)}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Xem trên bản đồ"
+                  style={styles.mapLink}
+                  onPress={openRouteMap}
+                  disabled={openingMap}>
+                  <Ionicons name="map-outline" size={14} color={Colors.primary} />
+                  <Text style={styles.mapLinkText}>Xem trên bản đồ</Text>
+                </Pressable>
+              </View>
               {!isOwner && awayLabel ? <Text style={styles.away}>{awayLabel}</Text> : null}
               {!isOwner && !awayLabel && !point ? (
                 <Pressable onPress={() => ensureLocation()}>
@@ -399,6 +429,10 @@ export default function JobDetailScreen() {
         <Pressable style={styles.cta} onPress={() => setQuoteOpen(true)}>
           <Text style={styles.ctaText}>Gửi đề xuất ngay</Text>
         </Pressable>
+      ) : null}
+
+      {routeOpen ? (
+        <RouteMapModal from={routeFrom} to={routeTo} onClose={() => setRouteOpen(false)} />
       ) : null}
 
       <Modal visible={quoteOpen} transparent animationType="fade">
@@ -612,6 +646,23 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 14,
     lineHeight: 20,
+  },
+  locationLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  mapLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  mapLinkText: {
+    color: Colors.primary,
+    fontWeight: '800',
+    fontSize: 13,
   },
   flex: {
     flex: 1,

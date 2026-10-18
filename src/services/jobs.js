@@ -4,6 +4,13 @@ import { getProfileById, mapWorkerProfile } from '@/services/profiles';
 
 const LOCAL_JOBS_KEY = 'viecnhanh_local_jobs';
 
+export function formatJobDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())} ${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
 function webStorage() {
   try {
     const store = globalThis.localStorage;
@@ -223,12 +230,7 @@ export function createLocalJob(profileId, payload, { autoApprove = true } = {}) 
     hireCancelReason: null,
     completedAt: null,
     createdAt: now.toISOString(),
-    dateLabel: now.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
+    dateLabel: formatJobDate(now),
     distanceKm: 0,
     latitude: Number(payload.latitude) || null,
     longitude: Number(payload.longitude) || null,
@@ -264,9 +266,7 @@ export function mapJob(row, profileId) {
     hireCancelReason: row.hire_cancel_reason || null,
     completedAt: row.completed_at || null,
     createdAt: row.created_at,
-    dateLabel: createdAt
-      ? createdAt.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-      : 'Linh hoạt',
+    dateLabel: createdAt ? formatJobDate(createdAt) : 'Linh hoạt',
     distanceKm: 0,
     latitude: row.latitude == null || row.latitude === '' ? null : Number(row.latitude),
     longitude: row.longitude == null || row.longitude === '' ? null : Number(row.longitude),
