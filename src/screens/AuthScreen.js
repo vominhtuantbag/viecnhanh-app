@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import SocialLoginRow from '@/components/SocialLoginRow';
 import { Colors, Radius, Shadow } from '@/constants/colors';
 import { useAuth } from '@/context/AuthContext';
 import { toAuthErrorMessage } from '@/lib/auth-errors';
@@ -21,7 +22,8 @@ import { toAuthErrorMessage } from '@/lib/auth-errors';
 export default function AuthScreen({ mode = 'login' }) {
   const isRegister = mode === 'register';
   const params = useLocalSearchParams();
-  const { signInWithPhone, signUpWithPhone, signInWithGoogle, signInWithApple } = useAuth();
+  const { signInWithPhone, signUpWithPhone, signInWithGoogle, signInWithApple, signInWithFacebook } =
+    useAuth();
 
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -178,33 +180,13 @@ export default function AuthScreen({ mode = 'login' }) {
             <View style={styles.line} />
           </View>
 
-          <Pressable
-            style={[styles.social, loading && styles.disabled]}
-            onPress={() => run(signInWithGoogle, 'google')}
-            disabled={loading}>
-            {busy === 'google' ? (
-              <ActivityIndicator color={Colors.text} />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={18} color="#EA4335" />
-                <Text style={styles.socialText}>Đăng nhập với Google</Text>
-              </>
-            )}
-          </Pressable>
-
-          <Pressable
-            style={[styles.social, styles.apple, loading && styles.disabled]}
-            onPress={() => run(signInWithApple, 'apple')}
-            disabled={loading}>
-            {busy === 'apple' ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="logo-apple" size={20} color="#FFFFFF" />
-                <Text style={styles.appleText}>Đăng nhập với Apple</Text>
-              </>
-            )}
-          </Pressable>
+          <SocialLoginRow
+            busy={busy}
+            disabled={loading}
+            onGoogle={() => run(signInWithGoogle, 'google')}
+            onApple={() => run(signInWithApple, 'apple')}
+            onFacebook={() => run(signInWithFacebook, 'facebook')}
+          />
 
           <Pressable
             style={styles.switch}
@@ -383,32 +365,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textLight,
-  },
-  social: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.md,
-    paddingVertical: 14,
-    marginBottom: 10,
-  },
-  socialText: {
-    fontWeight: '800',
-    color: Colors.text,
-    fontSize: 15,
-  },
-  apple: {
-    backgroundColor: '#111111',
-    borderColor: '#111111',
-  },
-  appleText: {
-    fontWeight: '800',
-    color: '#FFFFFF',
-    fontSize: 15,
   },
   switch: {
     marginTop: 10,

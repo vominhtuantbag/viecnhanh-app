@@ -50,6 +50,7 @@ create table public.profiles (
   id_verified boolean not null default false,
   province_id text,
   ward_id text,
+  current_device_id text,
   created_at timestamptz not null default now()
 );
 
@@ -1062,6 +1063,7 @@ create trigger messages_enforce_chat_rules
   before insert on public.messages
   for each row execute function public.enforce_chat_rules();
 
+alter table public.profiles replica identity full;
 alter table public.messages replica identity full;
 alter table public.conversations replica identity full;
 alter table public.bids replica identity full;
@@ -1069,6 +1071,10 @@ alter table public.jobs replica identity full;
 
 do $$
 begin
+  begin
+    alter publication supabase_realtime add table public.profiles;
+  exception when duplicate_object then null;
+  end;
   begin
     alter publication supabase_realtime add table public.jobs;
   exception when duplicate_object then null;

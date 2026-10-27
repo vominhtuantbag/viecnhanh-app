@@ -103,7 +103,7 @@ export async function signInWithOAuthProvider(provider) {
   });
   if (error) throw new Error(toAuthErrorMessage(error));
   if (!data?.url) {
-    throw new Error('Không mở được trang đăng nhập. Kiểm tra Google/Apple đã bật trên Supabase.');
+    throw new Error('Không mở được trang đăng nhập. Kiểm tra nhà cung cấp đã bật trên Supabase.');
   }
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, AUTH_REDIRECT);
@@ -119,6 +119,10 @@ export async function signInWithOAuthProvider(provider) {
 
 export async function signInWithGoogle() {
   return signInWithOAuthProvider('google');
+}
+
+export async function signInWithFacebook() {
+  return signInWithOAuthProvider('facebook');
 }
 
 export async function signInWithApple() {
